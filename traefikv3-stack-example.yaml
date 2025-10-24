@@ -1,0 +1,64 @@
+# Deploy this stack with:
+# docker stack deploy -c traefikv3-stack-example.yaml traefik
+#
+# or update an existing stack:
+# docker stack deploy -c traefikv3-stack-example.yaml traefik --prune
+
+version: "3.7"
+services:
+  traefik:
+    image: traefik:v3.3.4
+    command:
+      - "--api.dashboard=true"
+      - "--providers.swarm=true"
+      - "--providers.swarm.endpoint=unix:///var/run/docker.sock"
+      - "--providers.swarm.exposedbydefault=false"
+      - "--providers.swarm.network=Techify"
+      - "--providers.file.directory=/etc/traefik/dynamic"
+      - "--providers.file.watch=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.allowacmebypass=true"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.transport.respondingTimeouts.idleTimeout=3600"
+      - "--core.defaultRuleSyntax=v3"
+      # Configuração de logs simplificada para stdout/stderr
+      - "--log.level=DEBUG"
+      - "--log.format=common"
+      - "--accesslog=true"
+      - "--accesslog.format=common"
+      # Configuração Let's Encrypt
+      - "--certificatesresolvers.letsencrypt.acme.email=your-email@example.com"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/etc/traefik/acme.json"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "/var/www/traefik_configs:/etc/traefik/dynamic:ro"
+      - "/var/www/traefik_configs/acme.json:/etc/traefik/acme.json"
+    networks:
+      - Techify
+    ports:
+      - target: 80
+        published: 80
+        mode: host
+      - target: 443
+        published: 443
+        mode: host
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+      labels:
+        - "traefik.enable=true"
+volumes:
+  vol_shared:
+    external: true
+    name: volume_swarm_shared
+  vol_certificates:
+    external: true
+    name: volume_swarm_certificates
+networks:
+  Techify:
+    external: true
+    attachable: true
+    name: Techify
