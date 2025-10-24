@@ -1,6 +1,6 @@
 # Traefik Manager API Documentation
 
-## Authentication
+## Authentication -
 
 The API supports two authentication methods:
 

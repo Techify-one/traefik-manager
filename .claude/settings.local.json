@@ -13,7 +13,11 @@
       "Bash(tee:*)",
       "Bash(apt update:*)",
       "Bash(apt install:*)",
-      "Read(//usr/bin/**)"
+      "Read(//usr/bin/**)",
+      "Bash(git remote add:*)",
+      "Bash(git branch:*)",
+      "Bash(git remote:*)",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []
