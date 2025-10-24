@@ -298,7 +298,7 @@ http://YOUR_IP/traefik-manager/
 
 **Credentials:**
 - Username: `admin`
-- Password: `admin`
+- Password: (Olhar no arquivo config.php)
 
 ---
 
