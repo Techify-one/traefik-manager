@@ -1,3 +1,4 @@
+# Traefik pronto para fazer Passthrough e SSL Termination  usando arquivo dinâmicos da pasta /var/www/traefik_configs
 # Deploy this stack with:
 # docker stack deploy -c traefikv3-stack-example.yaml traefik
 #
