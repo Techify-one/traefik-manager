@@ -107,6 +107,42 @@ function formatDate($timestamp) {
 }
 
 /**
+ * Load Vite manifest entry for the React frontend
+ */
+function getReactAssets($entry = 'src/main.tsx') {
+    $manifestPath = __DIR__ . '/../frontend/dist/manifest.json';
+
+    if (!file_exists($manifestPath)) {
+        return [
+            'loaded' => false,
+            'js' => null,
+            'css' => [],
+        ];
+    }
+
+    $manifest = json_decode(file_get_contents($manifestPath), true);
+
+    if (!isset($manifest[$entry])) {
+        return [
+            'loaded' => false,
+            'js' => null,
+            'css' => [],
+        ];
+    }
+
+    $entryData = $manifest[$entry];
+    $base = 'frontend/dist/';
+
+    return [
+        'loaded' => true,
+        'js' => $base . ($entryData['file'] ?? ''),
+        'css' => array_map(function ($css) use ($base) {
+            return $base . $css;
+        }, $entryData['css'] ?? []),
+    ];
+}
+
+/**
  * Generate CSRF Token
  */
 function generateCsrfToken() {

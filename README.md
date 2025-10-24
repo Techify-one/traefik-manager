@@ -14,6 +14,7 @@ Sistema web para gerenciamento de configurações do Traefik via interface gráf
 
 - PHP 7.4 ou superior
 - Servidor web (Apache/Nginx)
+- Node.js 18+ e npm para compilar o frontend React
 - Acesso de escrita ao diretório de configurações do Traefik
 - Biblioteca YAML do PHP (php-yaml)
 
@@ -44,7 +45,15 @@ nano config.php
    - `API_BEARER_TOKEN`: Token para acesso à API (gere um seguro)
    - `TRAEFIK_CONFIGS_PATH`: Caminho para os arquivos de configuração do Traefik
 
-5. Certifique-se de que o diretório de configurações do Traefik tem as permissões corretas:
+5. Instale as dependências do frontend e gere o bundle de produção:
+```bash
+cd frontend
+npm install
+npm run build
+cd ..
+```
+
+6. Certifique-se de que o diretório de configurações do Traefik tem as permissões corretas:
 ```bash
 chmod 755 /var/www/traefik_configs
 ```
@@ -55,11 +64,21 @@ chmod 755 /var/www/traefik_configs
 
 Acesse via navegador: `http://seu-servidor/traefik-manager`
 
+O frontend é uma SPA criada com React, Vite e shadcn-ui. Em modo desenvolvimento é possível executar:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+E apontar o navegador para o host/porta expostos pelo Vite (por padrão `http://localhost:5173`). Utilize um proxy/reverse proxy para encaminhar as chamadas `/api` para o backend PHP.
+
 ### API REST
 
 A API está disponível em: `http://seu-servidor/traefik-manager/api/`
 
-Documentação completa da API: [API-DOCUMENTATION.md](API-DOCUMENTATION.md)
+Documentação completa da API disponível na interface em **API Docs** ou diretamente via [API-DOCUMENTATION.md](API-DOCUMENTATION.md).
 
 Exemplo de uso:
 ```bash
@@ -81,6 +100,7 @@ traefik-manager/
 ├── api/              # Endpoints da API REST
 ├── includes/         # Arquivos auxiliares (auth, logger, etc)
 ├── logs/             # Logs de auditoria
+├── frontend/         # Aplicação React (Vite + shadcn-ui)
 ├── templates/        # Templates YAML
 ├── config.php        # Configuração (não versionado)
 ├── config.example.php # Exemplo de configuração
