@@ -1,0 +1,37 @@
+# Configurações sensíveis
+config.php
+
+# Logs
+logs/
+*.log
+
+# Arquivos temporários
+*.tmp
+*.swp
+*.swo
+*~
+
+# Cache
+cache/
+*.cache
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Dependências (se usar Composer no futuro)
+/vendor/
+
+# Arquivos de ambiente
+.env
+.env.local
+
+# Backups
+*.bak
+backup/
