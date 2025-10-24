@@ -108,7 +108,7 @@ function getDomain() {
  *   "action": "create",
  *   "filename": "apache3.yml",
  *   "type": "ssl-termination",  // or "passthrough"
- *   "domain": "apache3.teste.techify.run",
+ *   "domain": "apache3.teste.techify.one",
  *   "ip": "10.8.100.103",
  *   "wildcard": false
  * }

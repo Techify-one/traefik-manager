@@ -154,9 +154,9 @@ $baseUrl = "http://{$serverIP}:{$serverPort}/traefik-manager/api";
   "data": {
     "domains": [
       {
-        "filename": "apache1.teste.techify.run.yml",
+        "filename": "apache1.teste.techify.one.yml",
         "type": "ssl-termination",
-        "domain": "apache1.teste.techify.run",
+        "domain": "apache1.teste.techify.one",
         "ip": "10.8.100.101",
         "isWildcard": false
       }
@@ -188,7 +188,7 @@ $baseUrl = "http://{$serverIP}:{$serverPort}/traefik-manager/api";
                             <i class="fas fa-copy"></i> Copy
                         </button>
                         <pre>curl -H "Authorization: Bearer <?php echo API_BEARER_TOKEN; ?>" \
-     "<?php echo $baseUrl; ?>/domains.php?action=get&file=apache1.teste.techify.run.yml"</pre>
+     "<?php echo $baseUrl; ?>/domains.php?action=get&file=apache1.teste.techify.one.yml"</pre>
                     </div>
                 </div>
 

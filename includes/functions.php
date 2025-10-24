@@ -43,7 +43,7 @@ function validateDomain($domain) {
 
 /**
  * Generate filename from domain
- * Returns the full domain as filename (e.g., "apache1.teste.techify.run")
+ * Returns the full domain as filename (e.g., "apache1.teste.techify.one")
  */
 function generateFilename($domain) {
     // Remove protocol, www, and wildcard

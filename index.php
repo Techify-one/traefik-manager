@@ -156,7 +156,7 @@ $csrfToken = generateCsrfToken();
                                 <div class="row">
                                     <div class="col-md-6 mb-3">
                                         <label for="domainName" class="form-label">Domain</label>
-                                        <input type="text" class="form-control" id="domainName" placeholder="example.teste.techify.run" required onkeyup="updateFilenameFromDomain()">
+                                        <input type="text" class="form-control" id="domainName" placeholder="example.teste.techify.one" required onkeyup="updateFilenameFromDomain()">
                                         <small class="text-muted">Protocol and paths will be removed automatically</small>
                                     </div>
 
