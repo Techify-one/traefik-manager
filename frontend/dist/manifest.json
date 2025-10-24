@@ -1,0 +1,7 @@
+{
+  "src/main.tsx": {
+    "file": "assets/main.js",
+    "css": ["assets/app.css"],
+    "isEntry": true
+  }
+}

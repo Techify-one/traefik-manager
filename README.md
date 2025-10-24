@@ -55,11 +55,17 @@ chmod 755 /var/www/traefik_configs
 
 Acesse via navegador: `http://seu-servidor/traefik-manager`
 
+O frontend é uma SPA React compilada e publicada em `frontend/dist`. Basta garantir que este diretório esteja disponível junto aos arquivos PHP — não é necessário instalar Node.js no servidor. A aplicação carrega React, React Router e shadcn-ui por meio de módulos ESM servidos via CDN.
+
+> ⚠️ Caso deseje personalizar o frontend, instale Node.js localmente, adapte os módulos ESM conforme necessário e recompile os arquivos em `frontend/dist` antes do deploy.
+
+> ℹ️ O frontend consome módulos a partir de `https://esm.sh` e estilos do `https://cdn.jsdelivr.net`. Garanta que o servidor tenha acesso de saída a esses domínios ou hospede os arquivos localmente caso deseje operar em ambiente isolado.
+
 ### API REST
 
 A API está disponível em: `http://seu-servidor/traefik-manager/api/`
 
-Documentação completa da API: [API-DOCUMENTATION.md](API-DOCUMENTATION.md)
+Documentação completa da API disponível na interface em **API Docs** ou diretamente via [API-DOCUMENTATION.md](API-DOCUMENTATION.md).
 
 Exemplo de uso:
 ```bash
@@ -81,11 +87,12 @@ traefik-manager/
 ├── api/              # Endpoints da API REST
 ├── includes/         # Arquivos auxiliares (auth, logger, etc)
 ├── logs/             # Logs de auditoria
-├── templates/        # Templates YAML
+├── frontend/dist/    # Bundle React compilado (ESM + shadcn-ui)
 ├── config.php        # Configuração (não versionado)
 ├── config.example.php # Exemplo de configuração
 ├── index.php         # Interface principal
-└── login.php         # Página de login
+├── login.php         # Página de login
+└── logout.php        # Encerramento de sessão (limpa cookies)
 ```
 
 ## Licença

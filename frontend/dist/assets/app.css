@@ -1,0 +1,21 @@
+:root {
+  color-scheme: light;
+}
+
+body {
+  background-color: #f8fafc;
+  color: #0f172a;
+}
+
+a {
+  color: inherit;
+}
+
+pre code {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+button:focus-visible {
+  outline: 2px solid #1e293b;
+  outline-offset: 2px;
+}
