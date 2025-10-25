@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { SessionInfo, SessionResponse } from '../types/session';
+import { API_BASE_URL } from '../config';
 
 interface SessionContextValue {
   loading: boolean;
@@ -35,7 +36,7 @@ export const SessionProvider: React.FC<React.PropsWithChildren> = ({ children })
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/session.php', {
+      const response = await fetch(`${API_BASE_URL}/session.php`, {
         credentials: 'include',
         headers: {
           Accept: 'application/json'
@@ -62,7 +63,7 @@ export const SessionProvider: React.FC<React.PropsWithChildren> = ({ children })
   const login = useCallback(async (username: string, password: string) => {
     setLoading(true);
     try {
-      const response = await fetch('/api/session.php', {
+      const response = await fetch(`${API_BASE_URL}/session.php`, {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -95,7 +96,7 @@ export const SessionProvider: React.FC<React.PropsWithChildren> = ({ children })
   const logout = useCallback(async () => {
     setLoading(true);
     try {
-      await fetch('/api/session.php', {
+      await fetch(`${API_BASE_URL}/session.php`, {
         method: 'DELETE',
         credentials: 'include',
         headers: {

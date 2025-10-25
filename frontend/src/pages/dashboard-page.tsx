@@ -15,10 +15,9 @@ import { useToast } from '../hooks/use-toast';
 import { apiGet, apiPost } from '../lib/api';
 import { ensureYamlExtension, generateFilename, sanitizeDomain } from '../lib/domains';
 import type { DomainDetails, DomainListResponse, DomainSummary } from '../types/domain';
-import { FileText, Loader2, LogOut, Plus, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react';
+import { Copy, FileText, Loader2, LogOut, Plus, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react';
 
 interface DomainFormState {
-  filename: string;
   type: 'ssl-termination' | 'passthrough';
   domain: string;
   ip: string;
@@ -28,7 +27,6 @@ interface DomainFormState {
 }
 
 const defaultFormState: DomainFormState = {
-  filename: '',
   type: 'ssl-termination',
   domain: '',
   ip: '',
@@ -53,7 +51,6 @@ export function DashboardPage() {
   const [deleteTarget, setDeleteTarget] = useState<{ filename: string; domain: string } | null>(null);
   const [editingFilename, setEditingFilename] = useState<string | null>(null);
   const [dialogLoading, setDialogLoading] = useState(false);
-  const [filenameTouched, setFilenameTouched] = useState(false);
 
   const loadDomains = useCallback(async () => {
     try {
@@ -84,7 +81,6 @@ export function DashboardPage() {
     setFormState(defaultFormState);
     setActiveTab('simple');
     setEditingFilename(null);
-    setFilenameTouched(false);
   }, []);
 
   const openCreateDialog = () => {
@@ -99,7 +95,6 @@ export function DashboardPage() {
       const response = await apiGet<DomainDetails>(`/api/domains.php?action=get&file=${encodeURIComponent(filename)}`);
       const { info: details, content } = response.data;
       setFormState({
-        filename: filename.replace(/\.yml$/, ''),
         type: details.type,
         domain: details.domain,
         ip: details.ip,
@@ -109,7 +104,6 @@ export function DashboardPage() {
       });
       setActiveTab('simple');
       setEditingFilename(filename);
-      setFilenameTouched(true);
     } catch (error) {
       console.error(error);
       toast({ title: 'Não foi possível carregar o domínio', description: error instanceof Error ? error.message : 'Tente novamente', variant: 'destructive' });
@@ -122,14 +116,15 @@ export function DashboardPage() {
   const handleSave = async () => {
     if (saving) return;
 
-    const filenameBase = (formState.filename.trim() || generateFilename(formState.domain)).replace(/\s+/g, '');
-    if (!filenameBase) {
-      toast({ title: 'Informe um domínio válido', description: 'Preencha o nome do domínio para continuar.', variant: 'destructive' });
+    if (!formState.domain.trim() || !formState.ip.trim()) {
+      toast({ title: 'Campos obrigatórios', description: 'Preencha domínio e IP.', variant: 'destructive' });
       return;
     }
 
-    if (!formState.domain.trim() || !formState.ip.trim()) {
-      toast({ title: 'Campos obrigatórios', description: 'Preencha domínio e IP.', variant: 'destructive' });
+    // Generate filename automatically from domain
+    const filenameBase = generateFilename(formState.domain);
+    if (!filenameBase) {
+      toast({ title: 'Informe um domínio válido', description: 'Preencha o nome do domínio para continuar.', variant: 'destructive' });
       return;
     }
 
@@ -243,6 +238,38 @@ export function DashboardPage() {
     await logout();
   };
 
+  const copyToClipboard = async (text: string, label: string) => {
+    try {
+      // Try modern clipboard API first (requires HTTPS or localhost)
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        toast({ title: 'Copiado!', description: `${label} copiado para a área de transferência.` });
+        return;
+      }
+
+      // Fallback for HTTP (creates a temporary textarea)
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      textarea.style.top = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+
+      const successful = document.execCommand('copy');
+      document.body.removeChild(textarea);
+
+      if (successful) {
+        toast({ title: 'Copiado!', description: `${label} copiado para a área de transferência.` });
+      } else {
+        throw new Error('execCommand failed');
+      }
+    } catch (error) {
+      console.error('Failed to copy:', error);
+      toast({ title: 'Erro ao copiar', description: 'Não foi possível copiar para a área de transferência.', variant: 'destructive' });
+    }
+  };
+
   const headerActions = (
     <div className="flex items-center gap-2">
       <Button variant="secondary" onClick={() => void loadDomains()} title="Atualizar">
@@ -266,8 +293,8 @@ export function DashboardPage() {
     <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-6 px-6 py-8">
       <header className="flex flex-col justify-between gap-4 border-b border-border pb-6 sm:flex-row sm:items-center">
         <div>
-          <h1 className="text-3xl font-semibold">{info.appName}</h1>
-          <p className="text-sm text-muted-foreground">Olá, {info.username ?? 'usuário'}! Gerencie seus domínios Traefik.</p>
+          <h1 className="text-3xl font-semibold">{info?.appName ?? 'Traefik Manager'}</h1>
+          <p className="text-sm text-muted-foreground">Olá, {info?.username ?? 'usuário'}! Gerencie seus domínios Traefik.</p>
         </div>
         {headerActions}
       </header>
@@ -326,7 +353,23 @@ export function DashboardPage() {
                   <TableBody>
                     {filteredDomains.map((domain) => (
                       <TableRow key={domain.filename} className="cursor-pointer" onClick={() => void openEditDialog(domain.filename)}>
-                        <TableCell className="font-medium">{domain.domain}</TableCell>
+                        <TableCell className="font-medium">
+                          <div className="flex items-center gap-2">
+                            <span>{domain.domain}</span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void copyToClipboard(domain.domain, 'Domínio');
+                              }}
+                              title="Copiar domínio"
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </TableCell>
                         <TableCell>
                           <Badge variant={domain.type === 'ssl-termination' ? 'default' : 'secondary'}>
                             {domain.type === 'ssl-termination' ? 'SSL Termination' : 'Passthrough'}
@@ -403,14 +446,7 @@ export function DashboardPage() {
                       <Input
                         id="domain"
                         value={formState.domain}
-                        onChange={(event) => {
-                          const value = event.target.value;
-                          setFormState((prev) => ({
-                            ...prev,
-                            domain: value,
-                            filename: !filenameTouched ? generateFilename(value) : prev.filename
-                          }));
-                        }}
+                        onChange={(event) => setFormState((prev) => ({ ...prev, domain: event.target.value }))}
                         placeholder="exemplo.seudominio.com"
                       />
                     </div>
@@ -423,24 +459,6 @@ export function DashboardPage() {
                         placeholder="10.8.100.10"
                       />
                     </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="filename">Nome do arquivo</Label>
-                    <Input
-                      id="filename"
-                      value={formState.filename}
-                      onChange={(event) => {
-                        setFilenameTouched(true);
-                        setFormState((prev) => ({ ...prev, filename: event.target.value }));
-                      }}
-                      placeholder="exemplo"
-                    />
-                    <p className="text-xs text-muted-foreground">A extensão <code>.yml</code> será adicionada automaticamente.</p>
-                  </div>
-
-                  <div className="space-y-1 text-sm text-muted-foreground">
-                    <span className="font-medium">Arquivo gerado:</span> <code>{ensureYamlExtension(formState.filename || generateFilename(formState.domain) || 'dominio')}</code>
                   </div>
 
                   <div className="grid gap-4 sm:grid-cols-2">

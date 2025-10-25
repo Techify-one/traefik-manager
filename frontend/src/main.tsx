@@ -6,6 +6,7 @@ import './index.css';
 import { SessionProvider } from './context/session-context';
 import { ToastProviderInternal } from './hooks/use-toast';
 import { Toaster } from './components/ui/toaster';
+import { BASE_PATH } from './config';
 
 const rootElement = document.getElementById('root');
 
@@ -15,7 +16,7 @@ if (!rootElement) {
 
 ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
-    <BrowserRouter>
+    <BrowserRouter basename={BASE_PATH}>
       <ToastProviderInternal>
         <SessionProvider>
           <App />

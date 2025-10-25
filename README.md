@@ -45,13 +45,20 @@ nano config.php
    - `API_BEARER_TOKEN`: Token para acesso à API (gere um seguro)
    - `TRAEFIK_CONFIGS_PATH`: Caminho para os arquivos de configuração do Traefik
 
-5. Instale as dependências do frontend e gere o bundle de produção:
+5. **Compile o frontend React para produção:**
+```bash
+./build-frontend.sh
+```
+
+Ou manualmente:
 ```bash
 cd frontend
 npm install
 npm run build
 cd ..
 ```
+
+> **Nota:** O frontend React é compilado para arquivos estáticos (HTML, CSS, JS) que são servidos diretamente pelo PHP. Você **NÃO precisa** rodar `npm run dev` ou manter o Node.js em execução em produção. Após executar `npm run build`, todos os arquivos necessários estarão na pasta `frontend/dist/` e serão carregados automaticamente pelo `index.php`.
 
 6. Certifique-se de que o diretório de configurações do Traefik tem as permissões corretas:
 ```bash
@@ -64,7 +71,16 @@ chmod 755 /var/www/traefik_configs
 
 Acesse via navegador: `http://seu-servidor/traefik-manager`
 
-O frontend é uma SPA criada com React, Vite e shadcn-ui. Em modo desenvolvimento é possível executar:
+O frontend é uma SPA criada com React, Vite e shadcn-ui que é **servida como arquivos estáticos** pelo PHP. Basta acessar o endereço acima após realizar o build.
+
+**Importante:** A aplicação está configurada para rodar no subdiretório `/traefik-manager`. Se você instalou em um caminho diferente, será necessário:
+1. Ajustar o `BASE_PATH` em [frontend/src/config.ts](frontend/src/config.ts)
+2. Ajustar o `BASE_PATH` em [frontend/vite.config.ts](frontend/vite.config.ts)
+3. Recompilar o frontend com `./build-frontend.sh`
+
+#### Modo Desenvolvimento (Opcional)
+
+Se você estiver desenvolvendo o frontend, pode executar o servidor de desenvolvimento do Vite:
 
 ```bash
 cd frontend
@@ -72,7 +88,9 @@ npm install
 npm run dev
 ```
 
-E apontar o navegador para o host/porta expostos pelo Vite (por padrão `http://localhost:5173`). Utilize um proxy/reverse proxy para encaminhar as chamadas `/api` para o backend PHP.
+O Vite será executado em `http://localhost:5173` com hot-reload. Configure um proxy/reverse proxy para encaminhar as chamadas `/api` para o backend PHP.
+
+**Importante:** Em produção, use apenas o build compilado (`npm run build`). Não é necessário rodar o servidor de desenvolvimento.
 
 ### API REST
 

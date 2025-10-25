@@ -1,7 +1,13 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+// If you change the installation path, update this base path and also:
+// - frontend/src/config.ts (BASE_PATH)
+// Then rebuild with: ./build-frontend.sh
+const BASE_PATH = '/traefik-manager/';
+
 export default defineConfig({
+  base: BASE_PATH,
   plugins: [react()],
   server: {
     host: '0.0.0.0',
@@ -10,6 +16,12 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
-    manifest: true
+    manifest: true,
+    rollupOptions: {
+      input: '/index.html'
+    }
+  },
+  esbuild: {
+    jsx: 'automatic'
   }
 });

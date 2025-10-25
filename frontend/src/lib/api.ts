@@ -1,7 +1,17 @@
+import { API_BASE_URL } from '../config';
+
 export interface ApiResponse<T = unknown> {
   success: boolean;
   message: string;
   data: T;
+}
+
+function resolveUrl(url: string): string {
+  // If URL starts with /api/, replace with API_BASE_URL
+  if (url.startsWith('/api/')) {
+    return url.replace('/api/', `${API_BASE_URL}/`);
+  }
+  return url;
 }
 
 async function parseJson<T>(response: Response): Promise<ApiResponse<T>> {
@@ -14,7 +24,7 @@ async function parseJson<T>(response: Response): Promise<ApiResponse<T>> {
 }
 
 export async function apiGet<T>(url: string, init: RequestInit = {}): Promise<ApiResponse<T>> {
-  const response = await fetch(url, {
+  const response = await fetch(resolveUrl(url), {
     ...init,
     method: 'GET',
     credentials: 'include'
@@ -27,7 +37,7 @@ export async function apiGet<T>(url: string, init: RequestInit = {}): Promise<Ap
 }
 
 export async function apiPost<T>(url: string, body: unknown, init: RequestInit = {}): Promise<ApiResponse<T>> {
-  const response = await fetch(url, {
+  const response = await fetch(resolveUrl(url), {
     ...init,
     method: 'POST',
     credentials: 'include',
@@ -46,7 +56,7 @@ export async function apiPost<T>(url: string, body: unknown, init: RequestInit =
 }
 
 export async function apiDelete<T>(url: string, body?: unknown, init: RequestInit = {}): Promise<ApiResponse<T>> {
-  const response = await fetch(url, {
+  const response = await fetch(resolveUrl(url), {
     ...init,
     method: 'DELETE',
     credentials: 'include',

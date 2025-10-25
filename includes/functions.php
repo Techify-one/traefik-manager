@@ -109,7 +109,7 @@ function formatDate($timestamp) {
 /**
  * Load Vite manifest entry for the React frontend
  */
-function getReactAssets($entry = 'src/main.tsx') {
+function getReactAssets($entry = 'index.html') {
     $manifestPath = __DIR__ . '/../frontend/dist/manifest.json';
 
     if (!file_exists($manifestPath)) {
