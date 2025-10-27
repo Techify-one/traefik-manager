@@ -3,31 +3,37 @@
 @tailwind utilities;
 
 :root {
-  --background: 0 0% 100%;
-  --foreground: 240 10% 3.9%;
-  --card: 0 0% 100%;
-  --card-foreground: 240 10% 3.9%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 240 10% 3.9%;
-  --primary: 221 83% 53%;
-  --primary-foreground: 0 0% 100%;
-  --secondary: 240 4.8% 95.9%;
-  --secondary-foreground: 240 5.9% 10%;
-  --muted: 240 4.8% 95.9%;
-  --muted-foreground: 240 3.8% 46.1%;
-  --accent: 221 83% 96%;
-  --accent-foreground: 221 47% 31%;
-  --destructive: 0 84.2% 60.2%;
-  --destructive-foreground: 0 0% 98%;
-  --border: 214 32% 91%;
-  --input: 214 32% 91%;
-  --ring: 221 83% 53%;
+  --background: 233 44% 10%;
+  --foreground: 214 32% 94%;
+  --card: 232 38% 16%;
+  --card-foreground: 214 32% 94%;
+  --popover: 232 38% 17%;
+  --popover-foreground: 214 32% 94%;
+  --primary: 198 89% 60%;
+  --primary-foreground: 222 84% 12%;
+  --secondary: 230 26% 22%;
+  --secondary-foreground: 214 30% 88%;
+  --muted: 230 20% 26%;
+  --muted-foreground: 216 20% 70%;
+  --accent: 199 82% 64%;
+  --accent-foreground: 230 70% 12%;
+  --destructive: 0 72% 55%;
+  --destructive-foreground: 0 0% 96%;
+  --border: 231 23% 28%;
+  --input: 231 25% 32%;
+  --ring: 198 89% 60%;
   --radius: 0.75rem;
 }
 
 body {
   @apply bg-background text-foreground min-h-screen;
   font-feature-settings: "rlig" 1, "calt" 1;
+  background-color: hsl(var(--background));
+  background-image:
+    radial-gradient(120% 120% at 15% 0%, hsla(198, 88%, 32%, 0.28), transparent 60%),
+    radial-gradient(140% 140% at 85% 15%, hsla(260, 64%, 32%, 0.22), transparent 60%),
+    linear-gradient(135deg, hsl(233 46% 11%) 0%, hsl(230 40% 8%) 100%);
+  background-attachment: fixed;
 }
 
 code {
@@ -39,11 +45,12 @@ code {
 }
 
 ::-webkit-scrollbar-track {
-  background: hsl(var(--muted));
+  background: hsl(var(--muted) / 0.35);
 }
 
 ::-webkit-scrollbar-thumb {
-  background-color: hsl(var(--primary));
-  border-radius: 6px;
-  border: 3px solid hsl(var(--muted));
+  background-color: hsl(var(--primary) / 0.7);
+  border-radius: 9999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
 }

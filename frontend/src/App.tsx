@@ -30,7 +30,7 @@ export default function App() {
   const appTitle = useMemo(() => info.appName ?? 'Traefik Manager', [info.appName]);
 
   return (
-    <div className="min-h-screen bg-muted/20">
+    <div className="min-h-screen">
       <Routes>
         <Route path="/" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
         <Route path="/index.php" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
