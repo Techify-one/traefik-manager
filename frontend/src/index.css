@@ -3,37 +3,35 @@
 @tailwind utilities;
 
 :root {
-  --background: 233 44% 10%;
-  --foreground: 214 32% 94%;
-  --card: 232 38% 16%;
-  --card-foreground: 214 32% 94%;
-  --popover: 232 38% 17%;
-  --popover-foreground: 214 32% 94%;
-  --primary: 198 89% 60%;
-  --primary-foreground: 222 84% 12%;
-  --secondary: 230 26% 22%;
-  --secondary-foreground: 214 30% 88%;
-  --muted: 230 20% 26%;
-  --muted-foreground: 216 20% 70%;
-  --accent: 199 82% 64%;
-  --accent-foreground: 230 70% 12%;
+  --background: 215 25% 96%;
+  --foreground: 223 32% 16%;
+  --card: 0 0% 100%;
+  --card-foreground: 223 32% 16%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 223 32% 16%;
+  --primary: 212 88% 54%;
+  --primary-foreground: 210 20% 98%;
+  --secondary: 220 18% 92%;
+  --secondary-foreground: 222 26% 24%;
+  --muted: 215 16% 88%;
+  --muted-foreground: 220 12% 46%;
+  --accent: 210 80% 65%;
+  --accent-foreground: 217 40% 16%;
   --destructive: 0 72% 55%;
-  --destructive-foreground: 0 0% 96%;
-  --border: 231 23% 28%;
-  --input: 231 25% 32%;
-  --ring: 198 89% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 215 18% 84%;
+  --input: 214 20% 80%;
+  --ring: 212 88% 54%;
   --radius: 0.75rem;
 }
 
 body {
   @apply bg-background text-foreground min-h-screen;
   font-feature-settings: "rlig" 1, "calt" 1;
-  background-color: hsl(var(--background));
-  background-image:
-    radial-gradient(120% 120% at 15% 0%, hsla(198, 88%, 32%, 0.28), transparent 60%),
-    radial-gradient(140% 140% at 85% 15%, hsla(260, 64%, 32%, 0.22), transparent 60%),
-    linear-gradient(135deg, hsl(233 46% 11%) 0%, hsl(230 40% 8%) 100%);
-  background-attachment: fixed;
+  background:
+    radial-gradient(120% 120% at 15% 0%, hsla(212, 82%, 72%, 0.35), transparent 55%),
+    radial-gradient(120% 140% at 80% 0%, hsla(230, 70%, 84%, 0.28), transparent 60%),
+    linear-gradient(180deg, hsl(216 30% 97%) 0%, hsl(215 22% 94%) 100%);
 }
 
 code {
@@ -45,7 +43,7 @@ code {
 }
 
 ::-webkit-scrollbar-track {
-  background: hsl(var(--muted) / 0.35);
+  background: hsl(var(--muted) / 0.45);
 }
 
 ::-webkit-scrollbar-thumb {

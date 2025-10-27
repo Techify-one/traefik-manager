@@ -47,9 +47,9 @@ export function LoginPage({ title }: LoginPageProps) {
     <div className="relative flex min-h-screen items-center justify-center px-4">
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_hsla(198,88%,32%,0.18),_transparent_55%),_radial-gradient(circle_at_bottom,_hsla(268,61%,34%,0.22),_transparent_55%)]"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_hsla(210,82%,72%,0.35),_transparent_55%),_radial-gradient(circle_at_bottom,_hsla(230,70%,84%,0.28),_transparent_60%)]"
       />
-      <Card className="relative w-full max-w-md shadow-2xl">
+      <Card className="relative w-full max-w-md shadow-xl">
         <CardHeader>
           <div className="flex flex-col items-center space-y-3 text-center">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">

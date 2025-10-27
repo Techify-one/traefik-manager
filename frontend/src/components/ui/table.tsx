@@ -2,7 +2,7 @@ import * as React from 'react';
 import { cn } from '../../lib/utils';
 
 const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableElement>>(({ className, ...props }, ref) => (
-  <div className="relative w-full overflow-hidden rounded-xl border border-border/60 bg-card/80 shadow-lg backdrop-blur-sm">
+  <div className="relative w-full overflow-hidden rounded-xl border border-border bg-card shadow-sm">
     <table ref={ref} className={cn('w-full caption-bottom text-sm', className)} {...props} />
   </div>
 ));
@@ -22,7 +22,7 @@ const TableRow = React.forwardRef<HTMLTableRowElement, React.HTMLAttributes<HTML
   <tr
     ref={ref}
     className={cn(
-      'border-b border-border/40 transition-colors hover:bg-secondary/40 data-[state=selected]:bg-secondary/60',
+      'border-b border-border/60 transition-colors hover:bg-secondary/40 data-[state=selected]:bg-secondary/60',
       className
     )}
     {...props}
