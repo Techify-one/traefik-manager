@@ -19,6 +19,7 @@ require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/yaml-handler.php';
+require_once __DIR__ . '/../includes/metadata-handler.php';
 require_once __DIR__ . '/../includes/logger.php';
 
 // Check authentication (Session OR Bearer Token)
@@ -55,6 +56,22 @@ switch ($action) {
 
     case 'generate':
         generateYamlContent();
+        break;
+
+    case 'create-folder':
+        createFolderAction();
+        break;
+
+    case 'list-folders':
+        listFoldersAction();
+        break;
+
+    case 'move':
+        moveFileAction();
+        break;
+
+    case 'delete-folder':
+        deleteFolderAction();
         break;
 
     default:
@@ -130,15 +147,24 @@ function createDomain() {
     $ip = $data['ip'];
     $wildcard = $data['wildcard'] ?? false;
     $enableHttps = $data['enableHttps'] ?? true;
+    $folder = $data['folder'] ?? '';
+    $tags = $data['tags'] ?? [];
+    $port = $data['port'] ?? 80;  // Porta padrão 80
+    $path = $data['path'] ?? '';  // Caminho opcional
 
     // Validate domain
     if (!validateDomain($domain)) {
         jsonResponse(false, 'Invalid domain format');
     }
 
-    // Validate IP
+    // Validate IP or domain
     if (!validateIp($ip)) {
-        jsonResponse(false, 'Invalid IP address');
+        jsonResponse(false, 'IP address or domain invalid');
+    }
+
+    // Validate port
+    if (!is_numeric($port) || $port < 1 || $port > 65535) {
+        jsonResponse(false, 'Invalid port number');
     }
 
     // Ensure .yml extension
@@ -146,16 +172,19 @@ function createDomain() {
         $filename .= YAML_EXT;
     }
 
+    // Build relative path
+    $relativePath = empty($folder) ? $filename : $folder . '/' . $filename;
+
     // Check if file already exists
-    if (file_exists(TRAEFIK_CONFIGS_PATH . '/' . $filename)) {
+    if (file_exists(TRAEFIK_CONFIGS_PATH . '/' . $relativePath)) {
         jsonResponse(false, 'File already exists');
     }
 
     // Generate YAML content
-    $name = str_replace(YAML_EXT, '', $filename);
+    $name = str_replace(YAML_EXT, '', basename($filename));
 
     if ($type === 'ssl-termination') {
-        $yamlContent = generateSslTerminationYaml($name, $domain, $ip, $wildcard, $enableHttps);
+        $yamlContent = generateSslTerminationYaml($name, $domain, $ip, $wildcard, $enableHttps, $port, $path);
     } elseif ($type === 'passthrough') {
         $yamlContent = generatePassthroughYaml($name, $domain, $ip, $wildcard, $enableHttps);
     } else {
@@ -163,10 +192,15 @@ function createDomain() {
     }
 
     // Save file
-    if (saveYamlFile($filename, $yamlContent)) {
-        writeLog('CREATE', $filename, "Domain: {$domain}, IP: {$ip}, Type: {$type}");
+    if (saveYamlFile($filename, $yamlContent, $folder)) {
+        // Set tags if provided
+        if (!empty($tags) && is_array($tags)) {
+            setTags($relativePath, $tags);
+        }
+
+        writeLog('CREATE', $relativePath, "Domain: {$domain}, IP: {$ip}, Type: {$type}, Folder: {$folder}");
         jsonResponse(true, 'Domain created successfully', [
-            'filename' => $filename,
+            'filename' => $relativePath,
             'content' => $yamlContent
         ]);
     } else {
@@ -299,20 +333,27 @@ function generateYamlContent() {
     $wildcard = $data['wildcard'] ?? false;
     $enableHttps = $data['enableHttps'] ?? true;
     $name = $data['name'] ?? str_replace('.', '-', $domain);
+    $port = $data['port'] ?? 80;  // Porta padrão 80
+    $path = $data['path'] ?? '';  // Caminho opcional
 
     // Validate domain
     if (!validateDomain($domain)) {
         jsonResponse(false, 'Invalid domain format');
     }
 
-    // Validate IP
+    // Validate IP or domain
     if (!validateIp($ip)) {
-        jsonResponse(false, 'Invalid IP address');
+        jsonResponse(false, 'IP address or domain invalid');
+    }
+
+    // Validate port
+    if (!is_numeric($port) || $port < 1 || $port > 65535) {
+        jsonResponse(false, 'Invalid port number');
     }
 
     // Generate YAML content
     if ($type === 'ssl-termination') {
-        $yamlContent = generateSslTerminationYaml($name, $domain, $ip, $wildcard, $enableHttps);
+        $yamlContent = generateSslTerminationYaml($name, $domain, $ip, $wildcard, $enableHttps, $port, $path);
     } elseif ($type === 'passthrough') {
         $yamlContent = generatePassthroughYaml($name, $domain, $ip, $wildcard, $enableHttps);
     } else {
@@ -322,4 +363,119 @@ function generateYamlContent() {
     jsonResponse(true, 'YAML generated successfully', [
         'content' => $yamlContent
     ]);
+}
+
+/**
+ * Create a new folder
+ * POST /api/domains.php
+ * Body: {
+ *   "action": "create-folder",
+ *   "folderPath": "servers/production"
+ * }
+ */
+function createFolderAction() {
+    $data = getJsonInput();
+
+    if (empty($data['folderPath'])) {
+        jsonResponse(false, 'Folder path is required');
+    }
+
+    $folderPath = $data['folderPath'];
+
+    try {
+        if (createFolder($folderPath)) {
+            writeLog('FOLDER_CREATE', '', "Created folder: {$folderPath}");
+            jsonResponse(true, 'Folder created successfully', [
+                'folderPath' => $folderPath
+            ]);
+        } else {
+            jsonResponse(false, 'Failed to create folder');
+        }
+    } catch (Exception $e) {
+        jsonResponse(false, 'Error creating folder: ' . $e->getMessage());
+    }
+}
+
+/**
+ * List all folders
+ * GET /api/domains.php?action=list-folders
+ */
+function listFoldersAction() {
+    try {
+        $folders = listFolders();
+        jsonResponse(true, 'Folders retrieved successfully', [
+            'folders' => $folders
+        ]);
+    } catch (Exception $e) {
+        jsonResponse(false, 'Error listing folders: ' . $e->getMessage());
+    }
+}
+
+/**
+ * Move file to another folder
+ * POST /api/domains.php
+ * Body: {
+ *   "action": "move",
+ *   "filename": "apache1.yml",
+ *   "targetFolder": "servers/production"  // empty string for root
+ * }
+ */
+function moveFileAction() {
+    $data = getJsonInput();
+
+    if (empty($data['filename'])) {
+        jsonResponse(false, 'Filename is required');
+    }
+
+    if (!isset($data['targetFolder'])) {
+        jsonResponse(false, 'Target folder is required');
+    }
+
+    $filename = $data['filename'];
+    $targetFolder = $data['targetFolder'];
+
+    try {
+        if (moveFile($filename, $targetFolder)) {
+            writeLog('MOVE', $filename, "Moved to folder: {$targetFolder}");
+            jsonResponse(true, 'File moved successfully', [
+                'filename' => $filename,
+                'targetFolder' => $targetFolder
+            ]);
+        } else {
+            jsonResponse(false, 'Failed to move file');
+        }
+    } catch (Exception $e) {
+        jsonResponse(false, 'Error moving file: ' . $e->getMessage());
+    }
+}
+
+/**
+ * Delete an empty folder
+ * POST /api/domains.php
+ * Body: {
+ *   "action": "delete-folder",
+ *   "folderPath": "servers/old"
+ * }
+ */
+function deleteFolderAction() {
+    $data = getJsonInput();
+
+    if (empty($data['folderPath'])) {
+        jsonResponse(false, 'Folder path is required');
+    }
+
+    $folderPath = $data['folderPath'];
+
+    try {
+        if (deleteFolder($folderPath)) {
+            writeLog('FOLDER_DELETE', '', "Deleted folder: {$folderPath}");
+            jsonResponse(true, 'Folder deleted successfully', [
+                'folderPath' => $folderPath
+            ]);
+        } else {
+            jsonResponse(false, 'Failed to delete folder (may not be empty)');
+        }
+    } catch (Exception $e) {
+        jsonResponse(false, 'Error deleting folder: ' . $e->getMessage());
+    }
 }

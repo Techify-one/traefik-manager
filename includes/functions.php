@@ -24,10 +24,31 @@ function sanitizeDomain($domain) {
 }
 
 /**
- * Validate IP address
+ * Validate IP address or domain
+ * Accepts both IP addresses (IPv4/IPv6) and domain names
  */
 function validateIp($ip) {
-    return filter_var($ip, FILTER_VALIDATE_IP) !== false;
+    // Trim whitespace
+    $ip = trim($ip);
+
+    // Check if it's a valid IP address (IPv4 or IPv6)
+    if (filter_var($ip, FILTER_VALIDATE_IP) !== false) {
+        return true;
+    }
+
+    // Check if it's a valid domain name
+    // Allow alphanumeric, hyphens, and dots
+    // Must have at least one dot (e.g., example.com or subdomain.example.com)
+    if (preg_match('/^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/', $ip)) {
+        return true;
+    }
+
+    // Also allow localhost and simple hostnames (without dots)
+    if (preg_match('/^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?$/', $ip)) {
+        return true;
+    }
+
+    return false;
 }
 
 /**
@@ -110,7 +131,7 @@ function formatDate($timestamp) {
  * Load Vite manifest entry for the React frontend
  */
 function getReactAssets($entry = 'index.html') {
-    $manifestPath = __DIR__ . '/../frontend/dist/manifest.json';
+    $manifestPath = __DIR__ . '/../frontend/dist/.vite/manifest.json';
 
     if (!file_exists($manifestPath)) {
         return [

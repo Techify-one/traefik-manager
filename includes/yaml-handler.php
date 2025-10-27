@@ -5,6 +5,7 @@
  */
 
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/metadata-handler.php';
 
 /**
  * Parse YAML file
@@ -38,10 +39,13 @@ function validateYaml($content) {
 /**
  * Generate SSL Termination YAML
  */
-function generateSslTerminationYaml($name, $domain, $ip, $isWildcard = false, $enableHttps = true) {
+function generateSslTerminationYaml($name, $domain, $ip, $isWildcard = false, $enableHttps = true, $port = 80, $path = '') {
     $rule = $isWildcard
         ? "HostRegexp(`^.*{$domain}$`)"
         : "Host(`{$domain}`)";
+
+    // Use porta customizada ou padrão 80
+    $backendUrl = "http://{$ip}:{$port}";
 
     if (!$enableHttps) {
         // HTTP-only configuration
@@ -58,7 +62,7 @@ function generateSslTerminationYaml($name, $domain, $ip, $isWildcard = false, $e
                     "{$name}-service" => [
                         'loadBalancer' => [
                             'servers' => [
-                                ['url' => "http://{$ip}:80"]
+                                ['url' => $backendUrl]
                             ]
                         ]
                     ]
@@ -89,7 +93,7 @@ function generateSslTerminationYaml($name, $domain, $ip, $isWildcard = false, $e
                     "{$name}-service" => [
                         'loadBalancer' => [
                             'servers' => [
-                                ['url' => "http://{$ip}:80"]
+                                ['url' => $backendUrl]
                             ]
                         ]
                     ]
@@ -104,6 +108,21 @@ function generateSslTerminationYaml($name, $domain, $ip, $isWildcard = false, $e
                 ]
             ]
         ];
+
+        // Se um caminho foi especificado, adiciona middleware de redirect
+        if (!empty($path)) {
+            $pathWithSlashes = '/' . trim($path, '/') . '/';
+            $yaml['http']['middlewares']['redirect-root-to-path'] = [
+                'redirectRegex' => [
+                    'regex' => '^(https?://[^/]+)/?$',
+                    'replacement' => '${1}' . $pathWithSlashes,
+                    'permanent' => false
+                ]
+            ];
+
+            // Adiciona o middleware ao router HTTPS
+            $yaml['http']['routers']["{$name}-https"]['middlewares'] = ['redirect-root-to-path'];
+        }
     }
 
     return yaml_emit($yaml, YAML_UTF8_ENCODING);
@@ -207,7 +226,9 @@ function extractDomainInfo($yamlContent) {
         'domain' => '',
         'ip' => '',
         'isWildcard' => false,
-        'enableHttps' => true
+        'enableHttps' => true,
+        'port' => 80,
+        'path' => ''
     ];
 
     // Check if it's passthrough (has TCP section)
@@ -252,11 +273,27 @@ function extractDomainInfo($yamlContent) {
             $info['domain'] = str_replace(['^', '.*', '$'], '', $domain);
         }
 
-        // Extract IP
+        // Extract IP and Port
         $service = reset($data['http']['services']);
         $url = $service['loadBalancer']['servers'][0]['url'] ?? '';
-        if (preg_match('/http:\/\/([^:]+):/', $url, $matches)) {
+        if (preg_match('/http:\/\/([^:]+):(\d+)/', $url, $matches)) {
             $info['ip'] = $matches[1];
+            $info['port'] = (int)$matches[2];
+        } elseif (preg_match('/http:\/\/([^:\/]+)/', $url, $matches)) {
+            // If no port specified, assume default 80
+            $info['ip'] = $matches[1];
+            $info['port'] = 80;
+        }
+
+        // Extract Path from redirect-root-to-path middleware
+        if (isset($data['http']['middlewares']['redirect-root-to-path'])) {
+            $replacement = $data['http']['middlewares']['redirect-root-to-path']['redirectRegex']['replacement'] ?? '';
+            // Extract path from replacement: ${1}/path/
+            if (preg_match('/\$\{1\}\/(.+?)\/$/', $replacement, $matches)) {
+                $info['path'] = $matches[1];
+            }
+        } else {
+            $info['path'] = '';
         }
     }
 
@@ -264,10 +301,33 @@ function extractDomainInfo($yamlContent) {
 }
 
 /**
- * Save YAML file
+ * Normalize path for security (prevent path traversal)
  */
-function saveYamlFile($filename, $content) {
-    // Validate filename (no path traversal)
+function normalizePath($path) {
+    // Remove leading/trailing slashes
+    $path = trim($path, '/');
+
+    // Check for path traversal attempts
+    if (strpos($path, '..') !== false) {
+        return false;
+    }
+
+    return $path;
+}
+
+/**
+ * Save YAML file (with folder support)
+ */
+function saveYamlFile($filename, $content, $folder = '') {
+    // Normalize folder path
+    if (!empty($folder)) {
+        $folder = normalizePath($folder);
+        if ($folder === false) {
+            return false;
+        }
+    }
+
+    // Validate filename (no path traversal in filename itself)
     if (strpos($filename, '..') !== false || strpos($filename, '/') !== false) {
         return false;
     }
@@ -277,22 +337,46 @@ function saveYamlFile($filename, $content) {
         $filename .= YAML_EXT;
     }
 
-    $filepath = TRAEFIK_CONFIGS_PATH . '/' . $filename;
+    // Build full path
+    $relativePath = empty($folder) ? $filename : $folder . '/' . $filename;
+    $filepath = TRAEFIK_CONFIGS_PATH . '/' . $relativePath;
+
+    // Create folder if it doesn't exist
+    if (!empty($folder)) {
+        $folderPath = TRAEFIK_CONFIGS_PATH . '/' . $folder;
+        if (!is_dir($folderPath)) {
+            if (!mkdir($folderPath, 0755, true)) {
+                return false;
+            }
+            // Set ownership to www-data
+            chown($folderPath, 'www-data');
+            chgrp($folderPath, 'www-data');
+        }
+    }
 
     // Validate YAML before saving
     if (!validateYaml($content)) {
         return false;
     }
 
-    return file_put_contents($filepath, $content) !== false;
+    $result = file_put_contents($filepath, $content) !== false;
+
+    // Set ownership to www-data
+    if ($result) {
+        chown($filepath, 'www-data');
+        chgrp($filepath, 'www-data');
+    }
+
+    return $result;
 }
 
 /**
- * Delete YAML file
+ * Delete YAML file (with folder support)
  */
 function deleteYamlFile($filename) {
-    // Validate filename (no path traversal)
-    if (strpos($filename, '..') !== false || strpos($filename, '/') !== false) {
+    // Normalize filename (can include folder path now)
+    $filename = normalizePath($filename);
+    if ($filename === false) {
         return false;
     }
 
@@ -303,35 +387,183 @@ function deleteYamlFile($filename) {
     }
 
     // Don't delete acme.json
-    if ($filename === 'acme.json') {
+    if (basename($filename) === 'acme.json') {
         return false;
     }
+
+    // Remove tags for this file
+    removeFileTags($filename);
 
     return unlink($filepath);
 }
 
 /**
- * List all YAML files
+ * List all YAML files recursively
  */
 function listYamlFiles() {
-    $files = glob(TRAEFIK_CONFIGS_PATH . '/*' . YAML_EXT);
     $result = [];
+    $iterator = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator(TRAEFIK_CONFIGS_PATH, RecursiveDirectoryIterator::SKIP_DOTS),
+        RecursiveIteratorIterator::SELF_FIRST
+    );
 
-    foreach ($files as $file) {
-        $filename = basename($file);
-        $content = file_get_contents($file);
-        $info = extractDomainInfo($content);
+    foreach ($iterator as $file) {
+        if ($file->isFile() && substr($file->getFilename(), -4) === YAML_EXT) {
+            $filename = $file->getFilename();
 
-        $result[] = [
-            'filename' => $filename,
-            'type' => $info['type'] ?? 'unknown',
-            'domain' => $info['domain'] ?? '',
-            'ip' => $info['ip'] ?? '',
-            'isWildcard' => $info['isWildcard'] ?? false,
-            'size' => filesize($file),
-            'modified' => filemtime($file)
-        ];
+            // Skip acme.json and metadata files
+            if ($filename === 'acme.json' || $filename === '.metadata.json') {
+                continue;
+            }
+
+            $fullPath = $file->getPathname();
+            $relativePath = str_replace(TRAEFIK_CONFIGS_PATH . '/', '', $fullPath);
+
+            // Get folder (everything except filename)
+            $folder = dirname($relativePath);
+            if ($folder === '.') {
+                $folder = '';
+            }
+
+            $content = file_get_contents($fullPath);
+            $info = extractDomainInfo($content);
+
+            // Get tags for this file
+            $tags = getTags($relativePath);
+
+            $result[] = [
+                'filename' => $relativePath, // Full relative path
+                'type' => $info['type'] ?? 'unknown',
+                'domain' => $info['domain'] ?? '',
+                'ip' => $info['ip'] ?? '',
+                'isWildcard' => $info['isWildcard'] ?? false,
+                'enableHttps' => $info['enableHttps'] ?? true,
+                'tags' => $tags,
+                'folder' => $folder,
+                'size' => filesize($fullPath),
+                'modified' => filemtime($fullPath)
+            ];
+        }
     }
 
     return $result;
+}
+
+/**
+ * Create a folder in traefik configs
+ */
+function createFolder($folderPath) {
+    $folderPath = normalizePath($folderPath);
+    if ($folderPath === false || empty($folderPath)) {
+        return false;
+    }
+
+    $fullPath = TRAEFIK_CONFIGS_PATH . '/' . $folderPath;
+
+    if (is_dir($fullPath)) {
+        return true; // Already exists
+    }
+
+    if (!mkdir($fullPath, 0755, true)) {
+        return false;
+    }
+
+    // Set ownership to www-data
+    chown($fullPath, 'www-data');
+    chgrp($fullPath, 'www-data');
+
+    return true;
+}
+
+/**
+ * List folder structure
+ */
+function listFolders() {
+    $folders = [];
+    $iterator = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator(TRAEFIK_CONFIGS_PATH, RecursiveDirectoryIterator::SKIP_DOTS),
+        RecursiveIteratorIterator::SELF_FIRST
+    );
+
+    foreach ($iterator as $file) {
+        if ($file->isDir()) {
+            $relativePath = str_replace(TRAEFIK_CONFIGS_PATH . '/', '', $file->getPathname());
+            $folders[] = $relativePath;
+        }
+    }
+
+    sort($folders);
+    return $folders;
+}
+
+/**
+ * Move file to another folder
+ */
+function moveFile($currentPath, $targetFolder) {
+    $currentPath = normalizePath($currentPath);
+    if ($currentPath === false) {
+        return false;
+    }
+
+    $currentFullPath = TRAEFIK_CONFIGS_PATH . '/' . $currentPath;
+    if (!file_exists($currentFullPath)) {
+        return false;
+    }
+
+    // Normalize target folder
+    if (!empty($targetFolder)) {
+        $targetFolder = normalizePath($targetFolder);
+        if ($targetFolder === false) {
+            return false;
+        }
+    }
+
+    // Build target path
+    $filename = basename($currentPath);
+    $targetPath = empty($targetFolder) ? $filename : $targetFolder . '/' . $filename;
+    $targetFullPath = TRAEFIK_CONFIGS_PATH . '/' . $targetPath;
+
+    // Check if target already exists
+    if (file_exists($targetFullPath)) {
+        return false;
+    }
+
+    // Create target folder if needed
+    if (!empty($targetFolder)) {
+        createFolder($targetFolder);
+    }
+
+    // Move file
+    if (!rename($currentFullPath, $targetFullPath)) {
+        return false;
+    }
+
+    // Update tags reference
+    renameFileTags($currentPath, $targetPath);
+
+    return true;
+}
+
+/**
+ * Delete empty folder
+ */
+function deleteFolder($folderPath) {
+    $folderPath = normalizePath($folderPath);
+    if ($folderPath === false || empty($folderPath)) {
+        return false;
+    }
+
+    $fullPath = TRAEFIK_CONFIGS_PATH . '/' . $folderPath;
+
+    if (!is_dir($fullPath)) {
+        return false;
+    }
+
+    // Check if folder is empty
+    $files = scandir($fullPath);
+    if (count($files) > 2) { // . and ..
+        return false; // Not empty
+    }
+
+    return rmdir($fullPath);
 }

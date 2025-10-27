@@ -14,8 +14,17 @@ import { useSession } from '../context/session-context';
 import { useToast } from '../hooks/use-toast';
 import { apiGet, apiPost } from '../lib/api';
 import { ensureYamlExtension, generateFilename, sanitizeDomain } from '../lib/domains';
-import type { DomainDetails, DomainListResponse, DomainSummary } from '../types/domain';
-import { Copy, FileText, Loader2, LogOut, Plus, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react';
+import type { DomainDetails, DomainListResponse, DomainSummary, TagInfo } from '../types/domain';
+import { Copy, FileText, FolderTree, Grid3x3, Loader2, LogOut, FolderOpen, Plus, RefreshCw, ShieldCheck, Tags, Trash2 } from 'lucide-react';
+import { DomainFilters, type FilterState } from '../components/filters/domain-filters';
+import { TagsManagementDialog } from '../components/tags/tags-management-dialog';
+import { TagsMultiSelect } from '../components/tags/tags-multi-select';
+import { TagBadge } from '../components/tags/tag-badge';
+import { FolderDialog } from '../components/folders/folder-dialog';
+import { BreadcrumbNavigation } from '../components/folders/breadcrumb-navigation';
+import { FolderListItem, FileListItem } from '../components/folders/folder-list-item';
+import { fetchAvailableTags, createTag, deleteTag, updateFileTags } from '../lib/tags';
+import { fetchFolders, createFolder, moveFile } from '../lib/folders';
 
 interface DomainFormState {
   type: 'ssl-termination' | 'passthrough';
@@ -24,6 +33,10 @@ interface DomainFormState {
   wildcard: boolean;
   enableHttps: boolean;
   yaml: string;
+  folder: string;
+  tags: string[];
+  port: number;
+  path: string;
 }
 
 const defaultFormState: DomainFormState = {
@@ -32,7 +45,11 @@ const defaultFormState: DomainFormState = {
   ip: '',
   wildcard: false,
   enableHttps: true,
-  yaml: ''
+  yaml: '',
+  folder: '',
+  tags: [],
+  port: 80,
+  path: ''
 };
 
 export function DashboardPage() {
@@ -40,7 +57,6 @@ export function DashboardPage() {
   const { toast } = useToast();
   const [domains, setDomains] = useState<DomainSummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
   const [formState, setFormState] = useState<DomainFormState>(defaultFormState);
   const [activeTab, setActiveTab] = useState<'simple' | 'advanced'>('simple');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -51,6 +67,21 @@ export function DashboardPage() {
   const [deleteTarget, setDeleteTarget] = useState<{ filename: string; domain: string } | null>(null);
   const [editingFilename, setEditingFilename] = useState<string | null>(null);
   const [dialogLoading, setDialogLoading] = useState(false);
+
+  // New features states
+  const [viewMode, setViewMode] = useState<'list' | 'folders'>('list');
+  const [currentFolder, setCurrentFolder] = useState<string>('');
+  const [filters, setFilters] = useState<FilterState>({
+    search: '',
+    type: 'all',
+    wildcard: 'all',
+    tags: []
+  });
+  const [availableTags, setAvailableTags] = useState<TagInfo[]>([]);
+  const [availableFolders, setAvailableFolders] = useState<string[]>([]);
+  const [tagsDialogOpen, setTagsDialogOpen] = useState(false);
+  const [folderDialogOpen, setFolderDialogOpen] = useState(false);
+  const [moveTarget, setMoveTarget] = useState<DomainSummary | null>(null);
 
   const loadDomains = useCallback(async () => {
     try {
@@ -65,17 +96,102 @@ export function DashboardPage() {
     }
   }, [toast]);
 
+  const loadTags = useCallback(async () => {
+    try {
+      const tags = await fetchAvailableTags();
+      setAvailableTags(tags);
+    } catch (error) {
+      console.error('Error loading tags:', error);
+    }
+  }, []);
+
+  const loadFolders = useCallback(async () => {
+    try {
+      const folders = await fetchFolders();
+      setAvailableFolders(folders);
+    } catch (error) {
+      console.error('Error loading folders:', error);
+    }
+  }, []);
+
   useEffect(() => {
     void loadDomains();
-  }, [loadDomains]);
+    void loadTags();
+    void loadFolders();
+  }, [loadDomains, loadTags, loadFolders]);
+
+  // Calculate available subfolders in current folder
+  const availableSubfolders = useMemo(() => {
+    const foldersInCurrent = new Map<string, number>();
+
+    domains.forEach((domain) => {
+      // Only process domains that match current folder depth
+      if (currentFolder === '') {
+        // Root level - show first level folders
+        const parts = domain.folder.split('/').filter(Boolean);
+        if (parts.length > 0) {
+          const firstFolder = parts[0];
+          foldersInCurrent.set(firstFolder, (foldersInCurrent.get(firstFolder) || 0) + 1);
+        }
+      } else {
+        // Inside a folder - show subfolders
+        if (domain.folder.startsWith(currentFolder + '/')) {
+          const relativePath = domain.folder.substring(currentFolder.length + 1);
+          const parts = relativePath.split('/').filter(Boolean);
+          if (parts.length > 0) {
+            const subfolder = parts[0];
+            const fullPath = currentFolder + '/' + subfolder;
+            foldersInCurrent.set(fullPath, (foldersInCurrent.get(fullPath) || 0) + 1);
+          }
+        }
+      }
+    });
+
+    return Array.from(foldersInCurrent.entries()).map(([path, count]) => ({
+      name: path.split('/').pop() || path,
+      path,
+      filesCount: count,
+    }));
+  }, [domains, currentFolder]);
 
   const filteredDomains = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    if (!term) {
-      return domains;
+    let result = domains;
+
+    // Filter by folder if in folder view mode
+    if (viewMode === 'folders') {
+      result = result.filter(d => d.folder === currentFolder);
     }
-    return domains.filter((domain) => domain.domain.toLowerCase().includes(term) || domain.ip.toLowerCase().includes(term));
-  }, [domains, search]);
+
+    // Filter by search (domain/IP)
+    if (filters.search.trim()) {
+      const term = filters.search.trim().toLowerCase();
+      result = result.filter(d =>
+        d.domain.toLowerCase().includes(term) ||
+        d.ip.toLowerCase().includes(term) ||
+        d.filename.toLowerCase().includes(term)
+      );
+    }
+
+    // Filter by type
+    if (filters.type !== 'all') {
+      result = result.filter(d => d.type === filters.type);
+    }
+
+    // Filter by wildcard
+    if (filters.wildcard !== 'all') {
+      const isWildcard = filters.wildcard === 'yes';
+      result = result.filter(d => d.isWildcard === isWildcard);
+    }
+
+    // Filter by tags (AND - all tags must be present)
+    if (filters.tags.length > 0) {
+      result = result.filter(d =>
+        filters.tags.every(tag => d.tags.includes(tag))
+      );
+    }
+
+    return result;
+  }, [domains, filters, viewMode, currentFolder]);
 
   const resetForm = useCallback(() => {
     setFormState(defaultFormState);
@@ -94,13 +210,21 @@ export function DashboardPage() {
     try {
       const response = await apiGet<DomainDetails>(`/api/domains.php?action=get&file=${encodeURIComponent(filename)}`);
       const { info: details, content } = response.data;
+
+      // Find domain in list to get tags and folder
+      const domainInfo = domains.find(d => d.filename === filename);
+
       setFormState({
         type: details.type,
         domain: details.domain,
         ip: details.ip,
         wildcard: details.isWildcard,
         enableHttps: details.enableHttps !== false,
-        yaml: content
+        yaml: content,
+        folder: domainInfo?.folder || '',
+        tags: domainInfo?.tags || [],
+        port: details.port ?? 80,
+        path: details.path ?? ''
       });
       setActiveTab('simple');
       setEditingFilename(filename);
@@ -128,7 +252,9 @@ export function DashboardPage() {
       return;
     }
 
-    const finalFilename = ensureYamlExtension(filenameBase);
+    const newBaseFilename = ensureYamlExtension(filenameBase);
+    // Build full path with folder for proper comparison
+    const finalFilename = formState.folder ? `${formState.folder}/${newBaseFilename}` : newBaseFilename;
 
     try {
       setSaving(true);
@@ -141,10 +267,14 @@ export function DashboardPage() {
             ip: formState.ip,
             wildcard: formState.wildcard,
             enableHttps: formState.enableHttps,
-            name: filenameBase
+            name: filenameBase,
+            port: formState.port,
+            path: formState.path
           });
 
+          // Compare with folder path included
           if (editingFilename !== finalFilename) {
+            // Domain or folder changed - create new and delete old
             await apiPost('/api/domains.php', {
               action: 'create',
               filename: filenameBase,
@@ -152,7 +282,11 @@ export function DashboardPage() {
               domain: formState.domain,
               ip: formState.ip,
               wildcard: formState.wildcard,
-              enableHttps: formState.enableHttps
+              enableHttps: formState.enableHttps,
+              folder: formState.folder,
+              tags: formState.tags,
+              port: formState.port,
+              path: formState.path
             });
 
             await apiPost('/api/domains.php', {
@@ -160,11 +294,15 @@ export function DashboardPage() {
               filename: editingFilename
             });
           } else {
+            // Same file - just update content and tags
             await apiPost('/api/domains.php', {
               action: 'update',
               filename: editingFilename,
               content: generated.data.content
             });
+
+            // Update tags separately
+            await updateFileTags(editingFilename, formState.tags);
           }
         } else {
           await apiPost('/api/domains.php', {
@@ -174,16 +312,41 @@ export function DashboardPage() {
             domain: formState.domain,
             ip: formState.ip,
             wildcard: formState.wildcard,
-            enableHttps: formState.enableHttps
+            enableHttps: formState.enableHttps,
+            folder: formState.folder,
+            tags: formState.tags,
+            port: formState.port,
+            path: formState.path
           });
         }
       } else {
-        const payloadFilename = editingFilename ?? finalFilename;
-        await apiPost('/api/domains.php', {
-          action: editingFilename ? 'update' : 'create',
-          filename: payloadFilename,
-          content: formState.yaml
-        });
+        // Advanced mode (YAML)
+        if (editingFilename) {
+          // Editing existing file
+          await apiPost('/api/domains.php', {
+            action: 'update',
+            filename: editingFilename,
+            content: formState.yaml
+          });
+
+          // Update tags separately
+          await updateFileTags(editingFilename, formState.tags);
+        } else {
+          // Creating new file
+          await apiPost('/api/domains.php', {
+            action: 'create',
+            filename: filenameBase,
+            type: formState.type,
+            domain: formState.domain,
+            ip: formState.ip,
+            wildcard: formState.wildcard,
+            enableHttps: formState.enableHttps,
+            folder: formState.folder,
+            tags: formState.tags,
+            port: formState.port,
+            path: formState.path
+          });
+        }
       }
 
       toast({ title: 'Domínio salvo', description: `As configurações para ${formState.domain} foram atualizadas.` });
@@ -270,10 +433,81 @@ export function DashboardPage() {
     }
   };
 
+  // Tags handlers
+  const handleCreateTag = async (tag: string) => {
+    try {
+      await createTag(tag);
+      toast({ title: 'Tag criada', description: `Tag "${tag}" foi criada com sucesso.` });
+      await loadTags();
+    } catch (error) {
+      console.error('Error creating tag:', error);
+      toast({ title: 'Erro ao criar tag', description: error instanceof Error ? error.message : 'Tente novamente.', variant: 'destructive' });
+      throw error;
+    }
+  };
+
+  const handleDeleteTag = async (tag: string) => {
+    try {
+      await deleteTag(tag);
+      toast({ title: 'Tag removida', description: `Tag "${tag}" foi removida.` });
+      await loadTags();
+    } catch (error) {
+      console.error('Error deleting tag:', error);
+      toast({ title: 'Erro ao remover tag', description: error instanceof Error ? error.message : 'Tente novamente.', variant: 'destructive' });
+      throw error;
+    }
+  };
+
+  // Folder handlers
+  const openMoveDialog = (domain: DomainSummary) => {
+    setMoveTarget(domain);
+    setFolderDialogOpen(true);
+  };
+
+  const handleMoveFile = async (targetFolder: string) => {
+    if (!moveTarget) return;
+
+    try {
+      await moveFile(moveTarget.filename, targetFolder);
+      toast({ title: 'Arquivo movido', description: `${moveTarget.domain} foi movido para ${targetFolder || 'raiz'}.` });
+      setFolderDialogOpen(false);
+      setMoveTarget(null);
+      await loadDomains();
+      await loadFolders();
+    } catch (error) {
+      console.error('Error moving file:', error);
+      toast({ title: 'Erro ao mover arquivo', description: error instanceof Error ? error.message : 'Tente novamente.', variant: 'destructive' });
+      throw error;
+    }
+  };
+
+  const handleCreateFolder = async (folderPath: string) => {
+    try {
+      await createFolder(folderPath);
+      toast({ title: 'Pasta criada', description: `Pasta "${folderPath}" foi criada.` });
+      await loadFolders();
+    } catch (error) {
+      console.error('Error creating folder:', error);
+      toast({ title: 'Erro ao criar pasta', description: error instanceof Error ? error.message : 'Tente novamente.', variant: 'destructive' });
+      throw error;
+    }
+  };
+
   const headerActions = (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       <Button variant="secondary" onClick={() => void loadDomains()} title="Atualizar">
         <RefreshCw className="mr-2 h-4 w-4" /> Atualizar
+      </Button>
+      <Button variant="secondary" onClick={() => setTagsDialogOpen(true)} title="Gerenciar tags">
+        <Tags className="mr-2 h-4 w-4" /> Tags
+      </Button>
+      <Button
+        variant={viewMode === 'list' ? 'default' : 'secondary'}
+        onClick={() => setViewMode(viewMode === 'list' ? 'folders' : 'list')}
+        title={viewMode === 'list' ? 'Visualização por pastas' : 'Visualização em lista'}
+      >
+        {viewMode === 'list' ? <FolderTree className="mr-2 h-4 w-4" /> : <Grid3x3 className="mr-2 h-4 w-4" />}
+        {viewMode === 'list' ? 'Pastas' : 'Lista'}
       </Button>
       <Button variant="secondary" onClick={openLogsDialog} title="Ver logs">
         <FileText className="mr-2 h-4 w-4" /> Logs
@@ -310,17 +544,20 @@ export function DashboardPage() {
           </Button>
         </div>
 
+        {/* Breadcrumb navigation for folder view */}
+        {viewMode === 'folders' && (
+          <BreadcrumbNavigation currentFolder={currentFolder} onNavigate={setCurrentFolder} />
+        )}
+
+        {/* Filters */}
+        <DomainFilters
+          filters={filters}
+          onFiltersChange={setFilters}
+          availableTags={availableTags.map((t) => t.name)}
+          resultsCount={filteredDomains.length}
+        />
+
         <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between gap-4">
-            <div className="relative w-full max-w-sm">
-              <Input placeholder="Buscar por domínio ou IP" value={search} onChange={(event) => setSearch(event.target.value)} className="pl-10" />
-              <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-muted-foreground">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-4.35-4.35m0 0A6.5 6.5 0 1010.3 17.3l6.35 6.35z" />
-                </svg>
-              </span>
-            </div>
-          </div>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0">
@@ -334,63 +571,114 @@ export function DashboardPage() {
                 <div className="flex items-center justify-center py-16">
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </div>
-              ) : filteredDomains.length === 0 ? (
-                <div className="flex flex-col items-center justify-center gap-2 py-16 text-muted-foreground">
-                  <FileText className="h-10 w-10" />
-                  <p>Nenhum domínio encontrado.</p>
+              ) : viewMode === 'folders' ? (
+                /* Folder view - Show folders first, then files */
+                <div className="space-y-2">
+                  {/* Show subfolders */}
+                  {availableSubfolders.map((folder) => (
+                    <FolderListItem
+                      key={folder.path}
+                      name={folder.name}
+                      path={folder.path}
+                      filesCount={folder.filesCount}
+                      onClick={() => setCurrentFolder(folder.path)}
+                    />
+                  ))}
+
+                  {/* Show files in current folder */}
+                  {filteredDomains.length === 0 && availableSubfolders.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center gap-2 py-16 text-muted-foreground">
+                      <FileText className="h-10 w-10" />
+                      <p>Nenhum domínio ou pasta encontrado.</p>
+                    </div>
+                  ) : (
+                    filteredDomains.map((domain) => (
+                      <FileListItem
+                        key={domain.filename}
+                        domain={domain.domain}
+                        type={domain.type}
+                        ip={domain.ip}
+                        tags={domain.tags}
+                        onEdit={() => void openEditDialog(domain.filename)}
+                      />
+                    ))
+                  )}
                 </div>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Domínio</TableHead>
-                      <TableHead>Tipo</TableHead>
-                      <TableHead>IP</TableHead>
-                      <TableHead>Wildcard</TableHead>
-                      <TableHead className="text-right">Ações</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredDomains.map((domain) => (
-                      <TableRow key={domain.filename} className="cursor-pointer" onClick={() => void openEditDialog(domain.filename)}>
-                        <TableCell className="font-medium">
-                          <div className="flex items-center gap-2">
-                            <span>{domain.domain}</span>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 w-6 p-0"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                void copyToClipboard(domain.domain, 'Domínio');
-                              }}
-                              title="Copiar domínio"
-                            >
-                              <Copy className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={domain.type === 'ssl-termination' ? 'default' : 'secondary'}>
-                            {domain.type === 'ssl-termination' ? 'SSL Termination' : 'Passthrough'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <code>{domain.ip}</code>
-                        </TableCell>
-                        <TableCell>{domain.isWildcard ? 'Sim' : 'Não'}</TableCell>
-                        <TableCell className="flex justify-end gap-2">
-                          <Button variant="outline" size="sm" onClick={(event) => { event.stopPropagation(); void openEditDialog(domain.filename); }}>
-                            Editar
-                          </Button>
-                          <Button variant="destructive" size="sm" onClick={(event) => { event.stopPropagation(); openDeleteDialog(domain); }}>
-                            <Trash2 className="mr-1 h-4 w-4" /> Remover
-                          </Button>
-                        </TableCell>
+                /* List view - Show table */
+                filteredDomains.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center gap-2 py-16 text-muted-foreground">
+                    <FileText className="h-10 w-10" />
+                    <p>Nenhum domínio encontrado.</p>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Domínio</TableHead>
+                        <TableHead>Tipo</TableHead>
+                        <TableHead>IP</TableHead>
+                        <TableHead>Tags</TableHead>
+                        <TableHead>Wildcard</TableHead>
+                        <TableHead className="text-right">Ações</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredDomains.map((domain) => (
+                        <TableRow key={domain.filename} className="cursor-pointer" onClick={() => void openEditDialog(domain.filename)}>
+                          <TableCell className="font-medium">
+                            <div className="flex items-center gap-2">
+                              <span>{domain.domain}</span>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void copyToClipboard(domain.domain, 'Domínio');
+                                }}
+                                title="Copiar domínio"
+                              >
+                                <Copy className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={domain.type === 'ssl-termination' ? 'default' : 'secondary'}>
+                              {domain.type === 'ssl-termination' ? 'SSL Termination' : 'Passthrough'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <code>{domain.ip}</code>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap gap-1">
+                              {domain.tags.length > 0 ? (
+                                domain.tags.map((tag) => (
+                                  <TagBadge key={tag} tag={tag} />
+                                ))
+                              ) : (
+                                <span className="text-sm text-muted-foreground">—</span>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>{domain.isWildcard ? 'Sim' : 'Não'}</TableCell>
+                          <TableCell className="flex justify-end gap-2">
+                            <Button variant="outline" size="sm" onClick={(event) => { event.stopPropagation(); void openEditDialog(domain.filename); }}>
+                              Editar
+                            </Button>
+                            <Button variant="secondary" size="sm" onClick={(event) => { event.stopPropagation(); openMoveDialog(domain); }}>
+                              <FolderOpen className="mr-1 h-4 w-4" /> Mover
+                            </Button>
+                            <Button variant="destructive" size="sm" onClick={(event) => { event.stopPropagation(); openDeleteDialog(domain); }}>
+                              <Trash2 className="mr-1 h-4 w-4" /> Remover
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )
               )}
             </CardContent>
           </Card>
@@ -451,15 +739,44 @@ export function DashboardPage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="ip">Backend IP</Label>
+                      <Label htmlFor="ip">Backend IP ou Domínio</Label>
                       <Input
                         id="ip"
                         value={formState.ip}
                         onChange={(event) => setFormState((prev) => ({ ...prev, ip: event.target.value }))}
-                        placeholder="10.8.100.10"
+                        placeholder="10.8.100.10 ou backend.exemplo.com"
                       />
                     </div>
                   </div>
+
+                  {/* Port e Path - apenas para SSL Termination */}
+                  {formState.type === 'ssl-termination' && (
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="port">Porta (opcional)</Label>
+                        <Input
+                          id="port"
+                          type="number"
+                          min="1"
+                          max="65535"
+                          value={formState.port}
+                          onChange={(event) => setFormState((prev) => ({ ...prev, port: parseInt(event.target.value) || 80 }))}
+                          placeholder="80"
+                        />
+                        <p className="text-xs text-muted-foreground">Porta do servidor web. Padrão: 80</p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="path">Caminho (opcional)</Label>
+                        <Input
+                          id="path"
+                          value={formState.path}
+                          onChange={(event) => setFormState((prev) => ({ ...prev, path: event.target.value }))}
+                          placeholder="traefik-manager"
+                        />
+                        <p className="text-xs text-muted-foreground">Redireciona / para /caminho/</p>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="flex items-center justify-between rounded-lg border border-border p-4">
@@ -476,6 +793,20 @@ export function DashboardPage() {
                       </div>
                       <Switch checked={formState.enableHttps} onCheckedChange={(value) => setFormState((prev) => ({ ...prev, enableHttps: value }))} />
                     </div>
+                  </div>
+
+                  {/* Tags */}
+                  <div className="space-y-2">
+                    <Label htmlFor="tags">Tags</Label>
+                    <TagsMultiSelect
+                      availableTags={availableTags.map((t) => t.name)}
+                      selectedTags={formState.tags}
+                      onChange={(tags) => setFormState((prev) => ({ ...prev, tags }))}
+                      placeholder="Selecionar tags..."
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Adicione tags para organizar suas configurações. Gerencie tags disponíveis no menu principal.
+                    </p>
                   </div>
                 </div>
               </TabsContent>
@@ -534,6 +865,28 @@ export function DashboardPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Tags Management Dialog */}
+      <TagsManagementDialog
+        open={tagsDialogOpen}
+        onOpenChange={setTagsDialogOpen}
+        tags={availableTags}
+        onCreateTag={handleCreateTag}
+        onDeleteTag={handleDeleteTag}
+      />
+
+      {/* Folder Dialog */}
+      {moveTarget && (
+        <FolderDialog
+          open={folderDialogOpen}
+          onOpenChange={setFolderDialogOpen}
+          filename={moveTarget.domain}
+          currentFolder={moveTarget.folder}
+          folders={availableFolders}
+          onMove={handleMoveFile}
+          onCreateFolder={handleCreateFolder}
+        />
+      )}
     </div>
   );
 }

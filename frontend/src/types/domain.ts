@@ -4,6 +4,11 @@ export interface DomainSummary {
   domain: string;
   ip: string;
   isWildcard: boolean;
+  enableHttps: boolean;
+  tags: string[];
+  folder: string;
+  size: number;
+  modified: number;
 }
 
 export interface DomainDetails {
@@ -15,9 +20,24 @@ export interface DomainDetails {
     type: 'ssl-termination' | 'passthrough';
     isWildcard: boolean;
     enableHttps?: boolean;
+    port?: number;
+    path?: string;
   };
 }
 
 export interface DomainListResponse {
   domains: DomainSummary[];
+}
+
+export interface TagInfo {
+  name: string;
+  count: number;
+}
+
+export interface TagsListResponse {
+  tags: TagInfo[];
+}
+
+export interface FolderListResponse {
+  folders: string[];
 }
