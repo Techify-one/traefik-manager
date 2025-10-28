@@ -4,7 +4,7 @@ import react from '@vitejs/plugin-react';
 // If you change the installation path, update this base path and also:
 // - frontend/src/config.ts (BASE_PATH)
 // Then rebuild with: ./build-frontend.sh
-const BASE_PATH = '/traefik-manager/';
+const BASE_PATH = '/';
 
 export default defineConfig({
   base: BASE_PATH,

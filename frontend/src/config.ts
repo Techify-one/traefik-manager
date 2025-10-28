@@ -4,7 +4,7 @@
  */
 
 // Base path for the application (must match vite.config.ts base and main.tsx basename)
-export const BASE_PATH = '/traefik-manager';
+export const BASE_PATH = '/';
 
 // API base URL (relative to BASE_PATH)
-export const API_BASE_URL = `${BASE_PATH}/api`;
+export const API_BASE_URL = `${BASE_PATH}api`;
