@@ -603,6 +603,7 @@ export function DashboardPage() {
                         onEdit={() => void openEditDialog(domain.filename)}
                         onMove={() => openMoveDialog(domain)}
                         onDelete={() => openDeleteDialog(domain)}
+                        onCopy={(text) => void copyToClipboard(text, 'Domínio')}
                       />
                     ))
                   )}

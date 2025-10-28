@@ -1,4 +1,4 @@
-import { Folder, ChevronRight, FileText, FolderOpen, Trash2 } from 'lucide-react';
+import { Folder, ChevronRight, FileText, FolderOpen, Trash2, Copy } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { TagBadge } from '../tags/tag-badge';
@@ -41,9 +41,10 @@ interface FileListItemProps {
   onEdit: () => void;
   onMove: () => void;
   onDelete: () => void;
+  onCopy: (text: string) => void;
 }
 
-export function FileListItem({ domain, type, ip, tags, isWildcard, onEdit, onMove, onDelete }: FileListItemProps) {
+export function FileListItem({ domain, type, ip, tags, isWildcard, onEdit, onMove, onDelete, onCopy }: FileListItemProps) {
   return (
     <div
       onClick={onEdit}
@@ -54,7 +55,21 @@ export function FileListItem({ domain, type, ip, tags, isWildcard, onEdit, onMov
           <FileText className="h-5 w-5 text-secondary-foreground" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="font-medium truncate">{domain}</p>
+          <div className="flex items-center gap-2">
+            <p className="font-medium truncate">{domain}</p>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0 flex-shrink-0"
+              onClick={(event) => {
+                event.stopPropagation();
+                onCopy(domain);
+              }}
+              title="Copiar domínio"
+            >
+              <Copy className="h-3.5 w-3.5" />
+            </Button>
+          </div>
           <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground mt-1">
             <code className="text-xs">{ip}</code>
             <span>•</span>
