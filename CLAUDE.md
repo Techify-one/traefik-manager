@@ -250,8 +250,9 @@ POST /api/domains.php
   "ip": "10.8.100.101",
   "wildcard": false,
   "enableHttps": true,
-  "port": 80,                  // Opcional, padrão 80
-  "path": ""                   // Opcional, ex: "app"
+  "port": 80,                  // Opcional, padrão 80 (apenas ssl-termination)
+  "path": "",                  // Opcional, ex: "traefik-manager" (apenas ssl-termination)
+  "tags": ["PRODUCAO", "BRASIL"]  // Opcional
 }
 ```
 
@@ -284,11 +285,15 @@ POST /api/domains.php
 {
   "action": "generate",
   "type": "ssl-termination",
-  "domain": "...",
-  "ip": "...",
-  // ... outros campos
+  "domain": "exemplo.teste.techify.run",
+  "ip": "10.8.100.100",
+  "wildcard": false,
+  "enableHttps": true,
+  "name": "exemplo",           // Opcional, padrão: domínio sem pontos
+  "port": 80,                  // Opcional, padrão 80 (apenas ssl-termination)
+  "path": ""                   // Opcional, ex: "app" (apenas ssl-termination)
 }
-Response: { success: true, data: { yaml: "..." } }
+Response: { success: true, data: { content: "..." } }
 ```
 
 ### Folders API (`/api/domains.php`)

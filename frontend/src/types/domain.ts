@@ -5,6 +5,8 @@ export interface DomainSummary {
   ip: string;
   isWildcard: boolean;
   enableHttps: boolean;
+  port: number;
+  path: string;
   tags: string[];
   folder: string;
   size: number;

@@ -438,6 +438,8 @@ function listYamlFiles() {
                 'ip' => $info['ip'] ?? '',
                 'isWildcard' => $info['isWildcard'] ?? false,
                 'enableHttps' => $info['enableHttps'] ?? true,
+                'port' => $info['port'] ?? 80,
+                'path' => $info['path'] ?? '',
                 'tags' => $tags,
                 'folder' => $folder,
                 'size' => filesize($fullPath),
