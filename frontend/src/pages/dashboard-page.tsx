@@ -599,7 +599,10 @@ export function DashboardPage() {
                         type={domain.type}
                         ip={domain.ip}
                         tags={domain.tags}
+                        isWildcard={domain.isWildcard}
                         onEdit={() => void openEditDialog(domain.filename)}
+                        onMove={() => openMoveDialog(domain)}
+                        onDelete={() => openDeleteDialog(domain)}
                       />
                     ))
                   )}
