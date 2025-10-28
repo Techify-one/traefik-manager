@@ -47,7 +47,7 @@ export function FileListItem({ domain, type, ip, tags, isWildcard, onEdit, onMov
   return (
     <div
       onClick={onEdit}
-      className="flex w-full items-center justify-between rounded-lg border border-border bg-card p-4 transition hover:border-primary hover:bg-accent cursor-pointer"
+      className="flex w-full items-center justify-between rounded-lg border border-border bg-card p-4 transition-colors hover:bg-secondary/40 cursor-pointer"
     >
       <div className="flex items-center gap-3 flex-1 min-w-0">
         <div className="flex h-10 w-10 items-center justify-center rounded-md bg-secondary flex-shrink-0">

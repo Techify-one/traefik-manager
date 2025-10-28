@@ -667,9 +667,6 @@ export function DashboardPage() {
                           </TableCell>
                           <TableCell>{domain.isWildcard ? 'Sim' : 'Não'}</TableCell>
                           <TableCell className="flex justify-end gap-2">
-                            <Button variant="outline" size="sm" onClick={(event) => { event.stopPropagation(); void openEditDialog(domain.filename); }}>
-                              Editar
-                            </Button>
                             <Button variant="secondary" size="sm" onClick={(event) => { event.stopPropagation(); openMoveDialog(domain); }}>
                               <FolderOpen className="mr-1 h-4 w-4" /> Mover
                             </Button>
