@@ -237,8 +237,19 @@ function updateDomain() {
         jsonResponse(false, 'Invalid YAML syntax');
     }
 
+    // Separate folder from filename for saveYamlFile()
+    $folder = '';
+    $baseFilename = $filename;
+
+    if (strpos($filename, '/') !== false) {
+        // File is in a subfolder, split it
+        $parts = explode('/', $filename);
+        $baseFilename = array_pop($parts);
+        $folder = implode('/', $parts);
+    }
+
     // Save file
-    if (saveYamlFile($filename, $content)) {
+    if (saveYamlFile($baseFilename, $content, $folder)) {
         $info = extractDomainInfo($content);
         writeLog('UPDATE', $filename, "Domain: " . ($info['domain'] ?? 'unknown'));
         jsonResponse(true, 'Domain updated successfully', [
