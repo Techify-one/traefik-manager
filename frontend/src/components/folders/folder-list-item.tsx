@@ -1,4 +1,4 @@
-import { Folder, ChevronRight, FileText, FolderOpen, Trash2, Copy } from 'lucide-react';
+import { Folder, ChevronRight, FileText, FolderOpen, Power, Trash2, Copy } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { TagBadge } from '../tags/tag-badge';
@@ -38,17 +38,19 @@ interface FileListItemProps {
   ip: string;
   tags: string[];
   isWildcard: boolean;
+  enabled: boolean;
   onEdit: () => void;
   onMove: () => void;
   onDelete: () => void;
+  onToggleStatus: () => void;
   onCopy: (text: string) => void;
 }
 
-export function FileListItem({ domain, type, ip, tags, isWildcard, onEdit, onMove, onDelete, onCopy }: FileListItemProps) {
+export function FileListItem({ domain, type, ip, tags, isWildcard, enabled, onEdit, onMove, onDelete, onToggleStatus, onCopy }: FileListItemProps) {
   return (
     <div
       onClick={onEdit}
-      className="flex w-full items-center justify-between rounded-lg border border-border bg-card p-4 transition-colors hover:bg-secondary/40 cursor-pointer"
+      className={`flex w-full items-center justify-between rounded-lg border border-border bg-card p-4 transition-colors hover:bg-secondary/40 cursor-pointer ${!enabled ? 'opacity-50' : ''}`}
     >
       <div className="flex items-center gap-3 flex-1 min-w-0">
         <div className="flex h-10 w-10 items-center justify-center rounded-md bg-secondary flex-shrink-0">
@@ -57,6 +59,9 @@ export function FileListItem({ domain, type, ip, tags, isWildcard, onEdit, onMov
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <p className="font-medium truncate">{domain}</p>
+            <Badge variant={enabled ? 'default' : 'secondary'} className="text-xs">
+              {enabled ? 'Ativo' : 'Inativo'}
+            </Badge>
             <Button
               variant="ghost"
               size="sm"
@@ -92,6 +97,17 @@ export function FileListItem({ domain, type, ip, tags, isWildcard, onEdit, onMov
         </div>
       </div>
       <div className="flex gap-2 ml-4 flex-shrink-0">
+        <Button
+          variant={enabled ? 'outline' : 'default'}
+          size="sm"
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleStatus();
+          }}
+          title={enabled ? 'Desativar domínio' : 'Ativar domínio'}
+        >
+          <Power className="mr-1 h-4 w-4" /> {enabled ? 'Desativar' : 'Ativar'}
+        </Button>
         <Button variant="secondary" size="sm" onClick={(event) => { event.stopPropagation(); onMove(); }}>
           <FolderOpen className="mr-1 h-4 w-4" /> Mover
         </Button>

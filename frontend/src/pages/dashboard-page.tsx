@@ -12,10 +12,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Textarea } from '../components/ui/textarea';
 import { useSession } from '../context/session-context';
 import { useToast } from '../hooks/use-toast';
-import { apiGet, apiPost } from '../lib/api';
+import { apiGet, apiPost, disableDomain, enableDomain } from '../lib/api';
 import { ensureYamlExtension, generateFilename, sanitizeDomain } from '../lib/domains';
 import type { DomainDetails, DomainListResponse, DomainSummary, TagInfo } from '../types/domain';
-import { Copy, FileText, FolderTree, Grid3x3, Loader2, LogOut, FolderOpen, Plus, RefreshCw, ShieldCheck, Tags, Trash2 } from 'lucide-react';
+import { Copy, FileText, FolderTree, Grid3x3, Loader2, LogOut, FolderOpen, Plus, Power, RefreshCw, ShieldCheck, Tags, Trash2 } from 'lucide-react';
 import { DomainFilters, type FilterState } from '../components/filters/domain-filters';
 import { TagsManagementDialog } from '../components/tags/tags-management-dialog';
 import { TagsMultiSelect } from '../components/tags/tags-multi-select';
@@ -447,6 +447,33 @@ export function DashboardPage() {
     }
   };
 
+  const handleToggleStatus = async (domain: DomainSummary, event: React.MouseEvent) => {
+    event.stopPropagation();
+    try {
+      if (domain.enabled) {
+        await disableDomain(domain.filename);
+        toast({
+          title: 'Domínio desativado',
+          description: `${formatDisplayDomain(domain.domain, domain.pathPrefix)} foi desativado.`
+        });
+      } else {
+        await enableDomain(domain.filename);
+        toast({
+          title: 'Domínio ativado',
+          description: `${formatDisplayDomain(domain.domain, domain.pathPrefix)} foi ativado.`
+        });
+      }
+      await loadDomains();
+    } catch (error) {
+      console.error(error);
+      toast({
+        title: 'Erro ao alterar status',
+        description: error instanceof Error ? error.message : 'Tente novamente.',
+        variant: 'destructive'
+      });
+    }
+  };
+
   const openLogsDialog = async () => {
     setLogsOpen(true);
     try {
@@ -587,7 +614,7 @@ export function DashboardPage() {
   );
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-6 px-6 py-8">
+    <div className="mx-auto flex min-h-screen w-full flex-col gap-6 px-6 py-8">
       <header className="flex flex-col justify-between gap-4 border-b border-border pb-6 sm:flex-row sm:items-center">
         <div>
           <h1 className="text-3xl font-semibold">{info?.appName ?? 'Traefik Manager'}</h1>
@@ -663,9 +690,25 @@ export function DashboardPage() {
                         ip={domain.ip}
                         tags={domain.tags}
                         isWildcard={domain.isWildcard}
+                        enabled={domain.enabled}
                         onEdit={() => void openEditDialog(domain.filename)}
                         onMove={() => openMoveDialog(domain)}
                         onDelete={() => openDeleteDialog(domain)}
+                        onToggleStatus={async () => {
+                          try {
+                            if (domain.enabled) {
+                              await disableDomain(domain.filename);
+                              toast({ title: 'Domínio desativado', description: `${formatDisplayDomain(domain.domain, domain.pathPrefix)} foi desativado.` });
+                            } else {
+                              await enableDomain(domain.filename);
+                              toast({ title: 'Domínio ativado', description: `${formatDisplayDomain(domain.domain, domain.pathPrefix)} foi ativado.` });
+                            }
+                            await loadDomains();
+                          } catch (error) {
+                            console.error(error);
+                            toast({ title: 'Erro ao alterar status', description: error instanceof Error ? error.message : 'Tente novamente.', variant: 'destructive' });
+                          }
+                        }}
                         onCopy={(text) => void copyToClipboard(text, 'Domínio')}
                       />
                     ))
@@ -682,6 +725,7 @@ export function DashboardPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead>Status</TableHead>
                         <TableHead>Domínio</TableHead>
                         <TableHead>Tipo</TableHead>
                         <TableHead>IP</TableHead>
@@ -694,7 +738,16 @@ export function DashboardPage() {
                       {filteredDomains.map((domain) => {
                         const displayDomain = formatDisplayDomain(domain.domain, domain.pathPrefix);
                         return (
-                          <TableRow key={domain.filename} className="cursor-pointer" onClick={() => void openEditDialog(domain.filename)}>
+                          <TableRow
+                            key={domain.filename}
+                            className={`cursor-pointer ${!domain.enabled ? 'opacity-50' : ''}`}
+                            onClick={() => void openEditDialog(domain.filename)}
+                          >
+                            <TableCell>
+                              <Badge variant={domain.enabled ? 'default' : 'secondary'}>
+                                {domain.enabled ? 'Ativo' : 'Inativo'}
+                              </Badge>
+                            </TableCell>
                             <TableCell className="font-medium">
                               <div className="flex items-center gap-2">
                                 <span>{displayDomain}</span>
@@ -733,6 +786,14 @@ export function DashboardPage() {
                             </TableCell>
                             <TableCell>{domain.isWildcard ? 'Sim' : 'Não'}</TableCell>
                             <TableCell className="flex justify-end gap-2">
+                              <Button
+                                variant={domain.enabled ? 'outline' : 'default'}
+                                size="sm"
+                                onClick={(event) => void handleToggleStatus(domain, event)}
+                                title={domain.enabled ? 'Desativar domínio' : 'Ativar domínio'}
+                              >
+                                <Power className="mr-1 h-4 w-4" /> {domain.enabled ? 'Desativar' : 'Ativar'}
+                              </Button>
                               <Button variant="secondary" size="sm" onClick={(event) => { event.stopPropagation(); openMoveDialog(domain); }}>
                                 <FolderOpen className="mr-1 h-4 w-4" /> Mover
                               </Button>

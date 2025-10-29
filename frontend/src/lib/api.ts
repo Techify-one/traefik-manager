@@ -73,3 +73,18 @@ export async function apiDelete<T>(url: string, body?: unknown, init: RequestIni
   }
   return payload;
 }
+
+// Domain-specific API functions
+export async function disableDomain(filename: string): Promise<ApiResponse<{ filename: string }>> {
+  return apiPost<{ filename: string }>('/api/domains.php', {
+    action: 'disable',
+    filename
+  });
+}
+
+export async function enableDomain(filename: string): Promise<ApiResponse<{ filename: string }>> {
+  return apiPost<{ filename: string }>('/api/domains.php', {
+    action: 'enable',
+    filename
+  });
+}

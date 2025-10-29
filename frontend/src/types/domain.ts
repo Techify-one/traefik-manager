@@ -5,6 +5,7 @@ export interface DomainSummary {
   ip: string;
   isWildcard: boolean;
   enableHttps: boolean;
+  enabled: boolean; // true if .yml, false if .yml-disable
   port: number;
   path: string;
   pathPrefix: string;

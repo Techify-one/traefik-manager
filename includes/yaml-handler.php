@@ -381,7 +381,7 @@ function deleteYamlFile($filename) {
 }
 
 /**
- * List all YAML files recursively
+ * List all YAML files recursively (including disabled ones)
  */
 function listYamlFiles() {
     $result = [];
@@ -391,47 +391,65 @@ function listYamlFiles() {
     );
 
     foreach ($iterator as $file) {
-        if ($file->isFile() && substr($file->getFilename(), -4) === YAML_EXT) {
-            $filename = $file->getFilename();
-
-            // Skip acme.json and metadata files
-            if ($filename === 'acme.json' || $filename === '.metadata.json') {
-                continue;
-            }
-
-            $fullPath = $file->getPathname();
-            $relativePath = str_replace(TRAEFIK_CONFIGS_PATH . '/', '', $fullPath);
-
-            // Get folder (everything except filename)
-            $folder = dirname($relativePath);
-            if ($folder === '.') {
-                $folder = '';
-            }
-
-            $content = file_get_contents($fullPath);
-            $info = extractDomainInfo($content);
-
-            // Get tags for this file
-            $tags = getTags($relativePath);
-
-            $result[] = [
-                'filename' => $relativePath, // Full relative path
-                'type' => $info['type'] ?? 'unknown',
-                'domain' => $info['domain'] ?? '',
-                'ip' => $info['ip'] ?? '',
-                'isWildcard' => $info['isWildcard'] ?? false,
-                'enableHttps' => $info['enableHttps'] ?? true,
-                'port' => $info['port'] ?? 80,
-                'path' => $info['path'] ?? '',
-                'pathPrefix' => $info['pathPrefix'] ?? '',
-                'pathPrefixTarget' => $info['pathPrefixTarget'] ?? '',
-                'tags' => $tags,
-                'folder' => $folder,
-                'size' => filesize($fullPath),
-                'modified' => filemtime($fullPath)
-            ];
+        if (!$file->isFile()) {
+            continue;
         }
+
+        $filename = $file->getFilename();
+
+        // Check if it's a YAML file (.yml) or disabled YAML file (.yml-disable)
+        $isEnabled = substr($filename, -4) === YAML_EXT;
+        $isDisabled = substr($filename, -12) === '.yml-disable';
+
+        if (!$isEnabled && !$isDisabled) {
+            continue;
+        }
+
+        // Skip acme.json and metadata files
+        if ($filename === 'acme.json' || $filename === '.metadata.json') {
+            continue;
+        }
+
+        $fullPath = $file->getPathname();
+        $relativePath = str_replace(TRAEFIK_CONFIGS_PATH . '/', '', $fullPath);
+
+        // Get folder (everything except filename)
+        $folder = dirname($relativePath);
+        if ($folder === '.') {
+            $folder = '';
+        }
+
+        $content = file_get_contents($fullPath);
+        $info = extractDomainInfo($content);
+
+        // Get tags for this file
+        $tags = getTags($relativePath);
+
+        $result[] = [
+            'filename' => $relativePath, // Full relative path
+            'type' => $info['type'] ?? 'unknown',
+            'domain' => $info['domain'] ?? '',
+            'ip' => $info['ip'] ?? '',
+            'isWildcard' => $info['isWildcard'] ?? false,
+            'enableHttps' => $info['enableHttps'] ?? true,
+            'enabled' => $isEnabled, // New field: true if .yml, false if .yml-disable
+            'port' => $info['port'] ?? 80,
+            'path' => $info['path'] ?? '',
+            'pathPrefix' => $info['pathPrefix'] ?? '',
+            'pathPrefixTarget' => $info['pathPrefixTarget'] ?? '',
+            'tags' => $tags,
+            'folder' => $folder,
+            'size' => filesize($fullPath),
+            'modified' => filemtime($fullPath)
+        ];
     }
+
+    // Sort by filename (removing -disable suffix for comparison) to maintain consistent order
+    usort($result, function($a, $b) {
+        $filenameA = str_replace('-disable', '', $a['filename']);
+        $filenameB = str_replace('-disable', '', $b['filename']);
+        return strcasecmp($filenameA, $filenameB);
+    });
 
     return $result;
 }
@@ -553,4 +571,84 @@ function deleteFolder($folderPath) {
     }
 
     return rmdir($fullPath);
+}
+
+/**
+ * Disable YAML file (rename .yml to .yml-disable)
+ */
+function disableYamlFile($filename) {
+    $filename = normalizePath($filename);
+    if ($filename === false) {
+        return false;
+    }
+
+    $filepath = TRAEFIK_CONFIGS_PATH . '/' . $filename;
+
+    if (!file_exists($filepath)) {
+        return false;
+    }
+
+    // Check if already disabled
+    if (substr($filename, -12) === '.yml-disable') {
+        return true; // Already disabled
+    }
+
+    // Rename to .yml-disable
+    $disabledPath = $filepath . '-disable';
+
+    if (file_exists($disabledPath)) {
+        return false; // Disabled version already exists
+    }
+
+    if (!rename($filepath, $disabledPath)) {
+        return false;
+    }
+
+    // Update tags reference
+    renameFileTags($filename, $filename . '-disable');
+
+    return true;
+}
+
+/**
+ * Enable YAML file (rename .yml-disable to .yml)
+ */
+function enableYamlFile($filename) {
+    $filename = normalizePath($filename);
+    if ($filename === false) {
+        return false;
+    }
+
+    // Ensure filename ends with -disable
+    if (substr($filename, -12) !== '.yml-disable') {
+        // Maybe already enabled?
+        $filepath = TRAEFIK_CONFIGS_PATH . '/' . $filename;
+        if (file_exists($filepath) && substr($filename, -4) === '.yml') {
+            return true; // Already enabled
+        }
+        return false;
+    }
+
+    $filepath = TRAEFIK_CONFIGS_PATH . '/' . $filename;
+
+    if (!file_exists($filepath)) {
+        return false;
+    }
+
+    // Remove -disable suffix
+    $enabledFilename = substr($filename, 0, -8); // Remove '-disable'
+    $enabledPath = TRAEFIK_CONFIGS_PATH . '/' . $enabledFilename;
+
+    if (file_exists($enabledPath)) {
+        return false; // Enabled version already exists
+    }
+
+    if (!rename($filepath, $enabledPath)) {
+        return false;
+    }
+
+    // Update tags reference
+    renameFileTags($filename, $enabledFilename);
+
+    return true;
 }

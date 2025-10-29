@@ -74,6 +74,14 @@ switch ($action) {
         deleteFolderAction();
         break;
 
+    case 'disable':
+        disableDomain();
+        break;
+
+    case 'enable':
+        enableDomain();
+        break;
+
     default:
         jsonResponse(false, 'Invalid action');
 }
@@ -510,5 +518,83 @@ function deleteFolderAction() {
         }
     } catch (Exception $e) {
         jsonResponse(false, 'Error deleting folder: ' . $e->getMessage());
+    }
+}
+
+/**
+ * Disable domain (rename .yml to .yml-disable)
+ * POST /api/domains.php
+ * Body: {
+ *   "action": "disable",
+ *   "filename": "apache1.yml"
+ * }
+ */
+function disableDomain() {
+    $data = getJsonInput();
+
+    if (empty($data['filename'])) {
+        jsonResponse(false, 'Filename is required');
+    }
+
+    $filename = $data['filename'];
+
+    // Get domain info before disabling
+    $filepath = TRAEFIK_CONFIGS_PATH . '/' . $filename;
+    if (file_exists($filepath)) {
+        $content = file_get_contents($filepath);
+        $info = extractDomainInfo($content);
+    }
+
+    try {
+        if (disableYamlFile($filename)) {
+            writeLog('DISABLE', $filename, "Domain: " . ($info['domain'] ?? 'unknown'));
+            jsonResponse(true, 'Domain disabled successfully', [
+                'filename' => $filename . '-disable'
+            ]);
+        } else {
+            jsonResponse(false, 'Failed to disable domain');
+        }
+    } catch (Exception $e) {
+        jsonResponse(false, 'Error disabling domain: ' . $e->getMessage());
+    }
+}
+
+/**
+ * Enable domain (rename .yml-disable to .yml)
+ * POST /api/domains.php
+ * Body: {
+ *   "action": "enable",
+ *   "filename": "apache1.yml-disable"
+ * }
+ */
+function enableDomain() {
+    $data = getJsonInput();
+
+    if (empty($data['filename'])) {
+        jsonResponse(false, 'Filename is required');
+    }
+
+    $filename = $data['filename'];
+
+    // Get domain info before enabling
+    $filepath = TRAEFIK_CONFIGS_PATH . '/' . $filename;
+    if (file_exists($filepath)) {
+        $content = file_get_contents($filepath);
+        $info = extractDomainInfo($content);
+    }
+
+    try {
+        if (enableYamlFile($filename)) {
+            // Remove -disable from filename for response
+            $enabledFilename = substr($filename, -12) === '.yml-disable' ? substr($filename, 0, -8) : $filename;
+            writeLog('ENABLE', $filename, "Domain: " . ($info['domain'] ?? 'unknown'));
+            jsonResponse(true, 'Domain enabled successfully', [
+                'filename' => $enabledFilename
+            ]);
+        } else {
+            jsonResponse(false, 'Failed to enable domain');
+        }
+    } catch (Exception $e) {
+        jsonResponse(false, 'Error enabling domain: ' . $e->getMessage());
     }
 }
