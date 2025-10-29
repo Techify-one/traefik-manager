@@ -1,0 +1,48 @@
+http:
+  routers:
+    {{NAME}}-http:
+      rule: {{RULE}}
+      service: {{NAME}}-service
+      entryPoints: [web]
+      middlewares: [redirect-to-https]
+    {{NAME}}-https:
+      rule: {{RULE}}
+      service: {{NAME}}-service
+      entryPoints: [websecure]
+      middlewares: [{{NAME}}/rx-root]
+      tls:
+        certResolver: letsencrypt
+    {{NAME}}-https-{{PATH_PREFIX_SLUG}}:
+      rule: {{RULE}} && PathPrefix(`/{{PATH_PREFIX}}`)
+      service: {{NAME}}-service
+      entryPoints: [websecure]
+      middlewares:
+        - {{NAME}}/ensure-{{PATH_PREFIX_SLUG}}-slash
+        - {{NAME}}/rx-{{PATH_PREFIX_SLUG}}
+      priority: 1000
+      tls:
+        certResolver: letsencrypt
+  services:
+    {{NAME}}-service:
+      loadBalancer:
+        servers:
+          - url: http://{{IP}}:{{PORT}}
+  middlewares:
+    redirect-to-https:
+      redirectScheme:
+        scheme: https
+        permanent: true
+    {{NAME}}/rx-root:
+      replacePathRegex:
+        regex: '^(?:/(.*))?$'
+        replacement: {{PATH_REPLACEMENT}}
+    # garante /{{PATH_PREFIX}}/ (com barra final) quando acessarem /{{PATH_PREFIX}}
+    {{NAME}}/ensure-{{PATH_PREFIX_SLUG}}-slash:
+      redirectRegex:
+        regex: '^(https?://[^/]+/{{PATH_PREFIX_REGEX}})$'
+        replacement: '${1}/'
+        permanent: true
+    {{NAME}}/rx-{{PATH_PREFIX_SLUG}}:
+      replacePathRegex:
+        regex: '^/{{PATH_PREFIX_REGEX}}(?:/(.*))?$'
+        replacement: {{PATH_PREFIX_REPLACEMENT}}

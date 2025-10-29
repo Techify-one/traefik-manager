@@ -1,0 +1,28 @@
+http:
+  routers:
+    {{NAME}}-http:
+      rule: {{RULE}}
+      service: {{NAME}}-service
+      entryPoints: [web]
+      middlewares: [redirect-to-https]
+    {{NAME}}-https:
+      rule: {{RULE}}
+      service: {{NAME}}-service
+      entryPoints: [websecure]
+      middlewares: [{{NAME}}/rx-root]
+      tls:
+        certResolver: letsencrypt
+  services:
+    {{NAME}}-service:
+      loadBalancer:
+        servers:
+          - url: http://{{IP}}:{{PORT}}
+  middlewares:
+    redirect-to-https:
+      redirectScheme:
+        scheme: https
+        permanent: true
+    {{NAME}}/rx-root:
+      replacePathRegex:
+        regex: '^(?:/(.*))?$'
+        replacement: {{PATH_REPLACEMENT}}

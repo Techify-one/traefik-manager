@@ -307,7 +307,8 @@ export function DashboardPage() {
     const finalFilename = formState.folder ? `${formState.folder}/${newBaseFilename}` : newBaseFilename;
 
     const normalizedPath = normalizePathSegment(formState.path);
-    const normalizedPathPrefixTarget = normalizedPath || normalizePathSegment(formState.pathPrefix);
+    // pathPrefixTarget pode ser vazio para ir para raiz (/) do backend
+    const normalizedPathPrefixTarget = normalizePathSegment(formState.path);
 
     try {
       setSaving(true);

@@ -7,6 +7,7 @@
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/metadata-handler.php';
 require_once __DIR__ . '/functions.php';
+require_once __DIR__ . '/template-engine.php';
 
 /**
  * Parse YAML file
@@ -40,251 +41,107 @@ function validateYaml($content) {
 require_once __DIR__ . '/functions.php';
 
 /**
- * Generate SSL Termination YAML
+ * Generate SSL Termination YAML usando templates
  */
 function generateSslTerminationYaml($name, $domain, $ip, $isWildcard = false, $enableHttps = true, $port = 80, $path = '', $pathPrefix = '', $pathPrefixTarget = '') {
-    $rule = $isWildcard
-        ? "HostRegexp(`^.*{$domain}$`)"
-        : "Host(`{$domain}`)";
-
-    // Use porta customizada ou padrão 80
-    $backendUrl = "http://{$ip}:{$port}";
-
-    $normalizedRootTarget = trim($path);
-    $normalizedRootTarget = trim($normalizedRootTarget, '/');
-
+    // Normalizar valores
+    $normalizedRootTarget = trim($path, '/');
     $normalizedPrefix = sanitizePathPrefix($pathPrefix);
     if ($normalizedPrefix === false) {
         $normalizedPrefix = '';
     }
+    $normalizedPrefixTarget = trim($pathPrefixTarget, '/');
 
-    $normalizedPrefixTarget = trim($pathPrefixTarget);
-    $normalizedPrefixTarget = trim($normalizedPrefixTarget, '/');
-
-    $buildReplacement = static function (string $targetPath): string {
-        $target = trim($targetPath, '/');
-        if ($target === '') {
-            return '/${1}';
-        }
-        return '/' . $target . '/${1}';
-    };
-
-    $baseMiddlewares = [];
-    $routers = [];
-    $services = [
-        "{$name}-service" => [
-            'loadBalancer' => [
-                'servers' => [
-                    ['url' => $backendUrl]
-                ]
-            ]
-        ]
+    // Dados base para todos os templates
+    $data = [
+        'NAME' => $name,
+        'DOMAIN' => $domain,
+        'IP' => $ip,
+        'PORT' => $port,
+        'RULE' => createTraefikRule($domain, $isWildcard)
     ];
 
-    $rootRouterName = "{$name}-http";
-    $includeRootRewrite = $normalizedRootTarget !== '' && $normalizedPrefix === '';
+    // Determinar qual template usar baseado nas opções
+    $templateName = 'ssl-termination-';
 
     if (!$enableHttps) {
-        $routers[$rootRouterName] = [
-            'rule' => $rule,
-            'service' => "{$name}-service",
-            'entryPoints' => ['web']
-        ];
+        // HTTP Only
+        if ($normalizedRootTarget !== '' && $normalizedPrefix === '') {
+            $templateName .= 'http-only-with-path';
+            $data['PATH_REPLACEMENT'] = createPathReplacement($normalizedRootTarget);
+        } else {
+            $templateName .= 'http-only';
+        }
     } else {
-        // HTTP router to redirect to HTTPS
-        $routers[$rootRouterName] = [
-            'rule' => $rule,
-            'service' => "{$name}-service",
-            'entryPoints' => ['web'],
-            'middlewares' => ['redirect-to-https']
-        ];
+        // HTTPS Enabled
+        $hasRootPath = $normalizedRootTarget !== '' && $normalizedPrefix === '';
+        $hasPrefix = $normalizedPrefix !== '';
 
-        $baseMiddlewares['redirect-to-https'] = [
-            'redirectScheme' => [
-                'scheme' => 'https',
-                'permanent' => true
-            ]
-        ];
-
-        if ($normalizedPrefix === '' || $includeRootRewrite) {
-            $httpsRouterName = "{$name}-https";
-            $routers[$httpsRouterName] = [
-                'rule' => $rule,
-                'service' => "{$name}-service",
-                'entryPoints' => ['websecure'],
-                'tls' => [
-                    'certResolver' => 'letsencrypt'
-                ]
-            ];
-            $rootRouterName = $httpsRouterName;
+        if ($hasRootPath && $hasPrefix) {
+            $templateName .= 'https-with-both';
+            $data['PATH_REPLACEMENT'] = createPathReplacement($normalizedRootTarget);
+            $data['PATH_PREFIX'] = $normalizedPrefix;
+            $data['PATH_PREFIX_SLUG'] = createPathPrefixSlug($normalizedPrefix);
+            $data['PATH_PREFIX_REGEX'] = sanitizePathPrefixForRegex($normalizedPrefix);
+            $data['PATH_PREFIX_REPLACEMENT'] = createPathReplacement($normalizedPrefixTarget);
+        } elseif ($hasRootPath) {
+            $templateName .= 'https-with-path';
+            $data['PATH_REPLACEMENT'] = createPathReplacement($normalizedRootTarget);
+        } elseif ($hasPrefix) {
+            $templateName .= 'https-with-prefix';
+            $data['PATH_PREFIX'] = $normalizedPrefix;
+            $data['PATH_PREFIX_SLUG'] = createPathPrefixSlug($normalizedPrefix);
+            $data['PATH_PREFIX_REGEX'] = sanitizePathPrefixForRegex($normalizedPrefix);
+            $data['PATH_PREFIX_REPLACEMENT'] = createPathReplacement($normalizedPrefixTarget);
+        } else {
+            $templateName .= 'https';
         }
     }
 
-    $primaryEntryPoints = $enableHttps ? ['websecure'] : ['web'];
+    // Renderizar template
+    $yamlContent = renderTemplate($templateName, $data);
 
-    // Root path replacement middleware (keeps URLs clean)
-    if ($includeRootRewrite) {
-        $rootMiddlewareName = "{$name}/rx-root";
-        $baseMiddlewares[$rootMiddlewareName] = [
-            'replacePathRegex' => [
-                'regex' => '^(?:/(.*))?$',
-                'replacement' => $buildReplacement($normalizedRootTarget)
-            ]
-        ];
-
-        if (!isset($routers[$rootRouterName]['middlewares'])) {
-            $routers[$rootRouterName]['middlewares'] = [];
-        }
-        $routers[$rootRouterName]['middlewares'][] = $rootMiddlewareName;
+    if ($yamlContent === false) {
+        error_log("Falha ao renderizar template: {$templateName}");
+        return false;
     }
 
-    // Path prefix handling (Host + PathPrefix)
-    if ($normalizedPrefix !== '') {
-        $slug = preg_replace('/[^A-Za-z0-9\-]+/', '-', $normalizedPrefix);
-        $slug = trim($slug, '-');
-        if ($slug === '') {
-            $slug = 'path';
-        }
-
-        $escapedPrefixForRule = str_replace('`', '\`', $normalizedPrefix);
-        $regexPrefix = '^/' . preg_quote($normalizedPrefix, '/') . '(?:/(.*))?$';
-        $replacement = $buildReplacement($normalizedPrefixTarget);
-        $pathMiddlewareName = "{$name}/rx-{$slug}";
-
-        $baseMiddlewares[$pathMiddlewareName] = [
-            'replacePathRegex' => [
-                'regex' => $regexPrefix,
-                'replacement' => $replacement
-            ]
-        ];
-
-        $prefixRouterName = ($enableHttps ? "{$name}-https-{$slug}" : "{$name}-http-{$slug}");
-        $routers[$prefixRouterName] = [
-            'rule' => $rule . " && PathPrefix(`/" . $escapedPrefixForRule . "`)",
-            'service' => "{$name}-service",
-            'entryPoints' => $primaryEntryPoints,
-            'middlewares' => [$pathMiddlewareName],
-            'priority' => 1000
-        ];
-
-        if ($enableHttps) {
-            $routers[$prefixRouterName]['tls'] = [
-                'certResolver' => 'letsencrypt'
-            ];
-        }
-    }
-
-    $yaml = [
-        'http' => [
-            'routers' => $routers,
-            'services' => $services
-        ]
-    ];
-
-    if (!empty($baseMiddlewares)) {
-        $yaml['http']['middlewares'] = $baseMiddlewares;
-    }
-
-    $yamlContent = yaml_emit($yaml, YAML_UTF8_ENCODING);
-
-    $quoteScalar = static function (string $yaml, string $key): string {
-        return preg_replace_callback(
-            '/^(\s*' . preg_quote($key, '/') . ':\s*)([^\'"\n][^\n]*)$/m',
-            static function ($matches) {
-                $value = rtrim($matches[2]);
-                return $matches[1] . "'" . $value . "'";
-            },
-            $yaml
-        );
-    };
-
-    $yamlContent = $quoteScalar($yamlContent, 'regex');
-    $yamlContent = $quoteScalar($yamlContent, 'replacement');
+    // Adicionar comentário indicando o template usado
+    $comment = "# Generated using template: {$templateName}.yml\n";
+    $yamlContent = $comment . $yamlContent;
 
     return $yamlContent;
 }
 
 /**
- * Generate Passthrough YAML
+ * Generate Passthrough YAML usando templates
  */
 function generatePassthroughYaml($name, $domain, $ip, $isWildcard = false, $enableHttps = true) {
-    $httpRule = $isWildcard
-        ? "HostRegexp(`^.*{$domain}$`)"
-        : "Host(`{$domain}`)";
+    // Dados para o template
+    $data = [
+        'NAME' => $name,
+        'DOMAIN' => $domain,
+        'IP' => $ip,
+        'RULE' => createTraefikRule($domain, $isWildcard),
+        'TCP_RULE' => createTraefikTcpRule($domain, $isWildcard)
+    ];
 
-    $tcpRule = $isWildcard
-        ? "HostSNIRegexp(`^.*{$domain}$`)"
-        : "HostSNI(`{$domain}`)";
+    // Determinar qual template usar
+    $templateName = $enableHttps ? 'passthrough-https' : 'passthrough-http-only';
 
-    if (!$enableHttps) {
-        // HTTP-only configuration
-        $yaml = [
-            'http' => [
-                'routers' => [
-                    "{$name}-http" => [
-                        'rule' => $httpRule,
-                        'service' => "{$name}-http-service",
-                        'entryPoints' => ['web']
-                    ]
-                ],
-                'services' => [
-                    "{$name}-http-service" => [
-                        'loadBalancer' => [
-                            'servers' => [
-                                ['url' => "http://{$ip}:80"]
-                            ]
-                        ]
-                    ]
-                ]
-            ]
-        ];
-    } else {
-        // HTTPS with passthrough
-        $yaml = [
-            'tcp' => [
-                'routers' => [
-                    "{$name}-https" => [
-                        'rule' => $tcpRule,
-                        'service' => "{$name}-service",
-                        'entryPoints' => ['websecure'],
-                        'tls' => [
-                            'passthrough' => true
-                        ]
-                    ]
-                ],
-                'services' => [
-                    "{$name}-service" => [
-                        'loadBalancer' => [
-                            'servers' => [
-                                ['address' => "{$ip}:443"]
-                            ]
-                        ]
-                    ]
-                ]
-            ],
-            'http' => [
-                'routers' => [
-                    "{$name}-http" => [
-                        'rule' => $httpRule,
-                        'service' => "{$name}-http-service",
-                        'entryPoints' => ['web'],
-                        'priority' => 1000
-                    ]
-                ],
-                'services' => [
-                    "{$name}-http-service" => [
-                        'loadBalancer' => [
-                            'servers' => [
-                                ['url' => "http://{$ip}:80"]
-                            ]
-                        ]
-                    ]
-                ]
-            ]
-        ];
+    // Renderizar template
+    $yamlContent = renderTemplate($templateName, $data);
+
+    if ($yamlContent === false) {
+        error_log("Falha ao renderizar template: {$templateName}");
+        return false;
     }
 
-    return yaml_emit($yaml, YAML_UTF8_ENCODING);
+    // Adicionar comentário indicando o template usado
+    $comment = "# Generated using template: {$templateName}.yml\n";
+    $yamlContent = $comment . $yamlContent;
+
+    return $yamlContent;
 }
 
 /**

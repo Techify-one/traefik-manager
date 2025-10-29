@@ -1,0 +1,25 @@
+tcp:
+  routers:
+    {{NAME}}-https:
+      rule: {{TCP_RULE}}
+      service: {{NAME}}-service
+      entryPoints: [websecure]
+      tls:
+        passthrough: true
+  services:
+    {{NAME}}-service:
+      loadBalancer:
+        servers:
+          - address: {{IP}}:443
+http:
+  routers:
+    {{NAME}}-http:
+      rule: {{RULE}}
+      service: {{NAME}}-http-service
+      entryPoints: [web]
+      priority: 1000
+  services:
+    {{NAME}}-http-service:
+      loadBalancer:
+        servers:
+          - url: http://{{IP}}:80

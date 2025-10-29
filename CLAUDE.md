@@ -22,7 +22,8 @@ Aplicação web full-stack para gerenciamento de configurações dinâmicas do T
 │
 ├── includes/                     # Módulos Backend
 │   ├── auth.php                 # Session + Bearer Token auth (111 linhas)
-│   ├── yaml-handler.php         # Parse/gera YAML (569 linhas)
+│   ├── yaml-handler.php         # Parse/gera YAML usando templates (145 linhas)
+│   ├── template-engine.php      # Engine de renderização de templates (160 linhas)
 │   ├── metadata-handler.php     # Sistema de tags (204 linhas)
 │   ├── functions.php            # Validações e helpers (190 linhas)
 │   └── logger.php               # Audit logging (65 linhas)
@@ -41,6 +42,17 @@ Aplicação web full-stack para gerenciamento de configurações dinâmicas do T
 │   ├── package.json
 │   ├── vite.config.ts
 │   └── tsconfig.json
+│
+├── templates/                    # Templates YAML
+│   ├── ssl-termination-https.yml                # HTTPS básico
+│   ├── ssl-termination-http-only.yml            # HTTP only
+│   ├── ssl-termination-https-with-path.yml      # HTTPS + path redirect
+│   ├── ssl-termination-http-only-with-path.yml  # HTTP + path redirect
+│   ├── ssl-termination-https-with-prefix.yml    # HTTPS + path prefix
+│   ├── ssl-termination-https-with-both.yml      # HTTPS + path + prefix
+│   ├── passthrough-https.yml                    # Passthrough HTTPS
+│   ├── passthrough-http-only.yml                # Passthrough HTTP
+│   └── README.md                                # Documentação templates
 │
 ├── config.php                    # Configurações da aplicação
 ├── index.php                     # Entry point
@@ -106,7 +118,9 @@ interface DomainSummary {
   isWildcard: boolean;       // Suporta *.domain.com
   enableHttps: boolean;      // SSL Termination only
   port: number;              // Backend port (padrão: 80)
-  path: string;              // Path redirect (opcional)
+  path: string;              // Path redirect raiz (opcional)
+  pathPrefix: string;        // Path prefix da URL (ex: "api")
+  pathPrefixTarget: string;  // Caminho destino no backend (ex: "v1/api", vazio = raiz)
   tags: string[];            // Ex: ["PRODUCAO", "BRASIL"]
   folder: string;            // Ex: "redes/brasil"
   size: number;              // Bytes
@@ -198,6 +212,48 @@ http:
         permanent: false
 ```
 
+### YAML: SSL Termination (Path Prefix com Destino Vazio)
+```yaml
+# Generated using template: ssl-termination-https-with-prefix.yml
+http:
+  routers:
+    apache10-http:
+      rule: Host(`apache10.teste.techify.run`)
+      service: apache10-service
+      entryPoints: [web]
+      middlewares: [redirect-to-https]
+    apache10-https-teste123:
+      rule: Host(`apache10.teste.techify.run`) && PathPrefix(`/teste123`)
+      service: apache10-service
+      entryPoints: [websecure]
+      middlewares:
+        - apache10/ensure-teste123-slash
+        - apache10/rx-teste123
+      priority: 1000
+      tls:
+        certResolver: letsencrypt
+  services:
+    apache10-service:
+      loadBalancer:
+        servers:
+          - url: http://10.8.200.253:64780
+  middlewares:
+    redirect-to-https:
+      redirectScheme:
+        scheme: https
+        permanent: true
+    # garante /teste123/ (com barra final) quando acessarem /teste123
+    apache10/ensure-teste123-slash:
+      redirectRegex:
+        regex: '^(https?://[^/]+/teste123)$'
+        replacement: '${1}/'
+        permanent: true
+    apache10/rx-teste123:
+      replacePathRegex:
+        regex: '^/teste123(?:/(.*))?$'
+        replacement: /${1}  # Vazio = vai para raiz (/) do backend
+```
+
 ### YAML: SSL Passthrough
 ```yaml
 tcp:
@@ -244,14 +300,16 @@ POST /api/domains.php
 {
   "action": "create",
   "filename": "apache1",
-  "folder": "redes",           // Opcional
+  "folder": "redes",              // Opcional
   "type": "ssl-termination",
   "domain": "apache1.teste.techify.run",
   "ip": "10.8.100.101",
   "wildcard": false,
   "enableHttps": true,
-  "port": 80,                  // Opcional, padrão 80 (apenas ssl-termination)
-  "path": "",                  // Opcional, ex: "traefik-manager" (apenas ssl-termination)
+  "port": 80,                     // Opcional, padrão 80 (apenas ssl-termination)
+  "path": "",                     // Opcional, path redirect raiz (apenas ssl-termination)
+  "pathPrefix": "",               // Opcional, path prefix na URL (ex: "api")
+  "pathPrefixTarget": "",         // Opcional, destino no backend (ex: "v1/api", vazio = raiz)
   "tags": ["PRODUCAO", "BRASIL"]  // Opcional
 }
 ```
@@ -291,7 +349,9 @@ POST /api/domains.php
   "enableHttps": true,
   "name": "exemplo",           // Opcional, padrão: domínio sem pontos
   "port": 80,                  // Opcional, padrão 80 (apenas ssl-termination)
-  "path": ""                   // Opcional, ex: "app" (apenas ssl-termination)
+  "path": "",                  // Opcional, path redirect raiz (apenas ssl-termination)
+  "pathPrefix": "",            // Opcional, path prefix na URL (ex: "api")
+  "pathPrefixTarget": ""       // Opcional, destino no backend (ex: "v1/api", vazio = raiz)
 }
 Response: { success: true, data: { content: "..." } }
 ```
@@ -487,11 +547,25 @@ const filteredDomains = useMemo(() => {
 - Validação: 1-65535
 - Exemplo: 64780 para apps em portas não-padrão
 
-**Caminho (Path):**
+**Caminho Raiz (Path):**
 - Opcional
 - Redireciona `/` para `/path/`
 - Exemplo: "traefik-manager" → acessar `/` redireciona para `/traefik-manager/`
-- Gera middleware `redirect-root-to-path` automaticamente
+- Gera middleware `replacePathRegex` automaticamente
+
+**Path Prefix (pathPrefix):**
+- Opcional
+- Define um caminho específico na URL que será roteado (ex: `/api`, `/teste123`)
+- Exemplo: "api" → rotas `https://domain.com/api/*`
+- Gera router com `PathPrefix` e middlewares de ensure-slash + replacePathRegex
+
+**Caminho de Destino (pathPrefixTarget):**
+- Opcional, usado junto com pathPrefix
+- Define para onde o path será reescrito no backend
+- **Vazio:** vai para raiz `/` do backend
+- **Com valor:** reescreve para o caminho especificado
+- Exemplo 1: pathPrefix="teste123", pathPrefixTarget="" → `/teste123/arquivo.html` → backend: `/arquivo.html`
+- Exemplo 2: pathPrefix="api", pathPrefixTarget="v1/api" → `/api/users` → backend: `/v1/api/users`
 
 ---
 
@@ -501,11 +575,12 @@ const filteredDomains = useMemo(() => {
 
 **Funções principais:**
 ```php
-// YAML
-generateSslTerminationYaml($name, $domain, $ip, $isWildcard, $enableHttps, $port, $path)
-generatePassthroughYaml($name, $domain, $ip)
+// YAML - Usa sistema de templates
+generateSslTerminationYaml($name, $domain, $ip, $isWildcard, $enableHttps, $port, $path, $pathPrefix, $pathPrefixTarget)
+generatePassthroughYaml($name, $domain, $ip, $isWildcard, $enableHttps)
 parseYamlFile($filename)
 validateYaml($content)
+extractDomainInfo($yamlContent)  // Extrai informações de YAML
 
 // Arquivos
 saveYamlFile($filename, $content, $folder = '')
@@ -520,6 +595,46 @@ listFolders()
 moveFile($currentPath, $targetFolder)
 deleteFolder($folderPath)
 ```
+
+### template-engine.php
+
+**Funções principais:**
+```php
+// Renderização
+renderTemplate($templateName, $data)  // Renderiza template com placeholders
+listTemplates()                        // Lista templates disponíveis
+templateExists($templateName)          // Verifica se template existe
+
+// Helpers
+createTraefikRule($domain, $isWildcard)           // Cria regra HTTP
+createTraefikTcpRule($domain, $isWildcard)        // Cria regra TCP
+createPathReplacement($targetPath)                 // Cria replacement para path
+sanitizePathPrefixForRegex($pathPrefix)           // Escapa path para regex
+createPathPrefixSlug($pathPrefix)                 // Cria slug de path prefix
+```
+
+**Templates disponíveis:**
+- `ssl-termination-https` - HTTPS básico
+- `ssl-termination-http-only` - HTTP only
+- `ssl-termination-https-with-path` - HTTPS + path redirect raiz
+- `ssl-termination-http-only-with-path` - HTTP + path redirect raiz
+- `ssl-termination-https-with-prefix` - HTTPS + path prefix específico
+- `ssl-termination-https-with-both` - HTTPS + path raiz + path prefix
+- `passthrough-https` - Passthrough HTTPS
+- `passthrough-http-only` - Passthrough HTTP only
+
+**Placeholders suportados:**
+- `{{NAME}}` - Nome da configuração
+- `{{DOMAIN}}` - Domínio completo
+- `{{IP}}` - Endereço IP do backend
+- `{{PORT}}` - Porta do backend
+- `{{RULE}}` - Regra HTTP Traefik
+- `{{TCP_RULE}}` - Regra TCP Traefik
+- `{{PATH_REPLACEMENT}}` - Replacement para path raiz
+- `{{PATH_PREFIX}}` - Path prefix
+- `{{PATH_PREFIX_SLUG}}` - Slug do path prefix
+- `{{PATH_PREFIX_REGEX}}` - Path prefix escapado para regex
+- `{{PATH_PREFIX_REPLACEMENT}}` - Replacement para path prefix
 
 ### metadata-handler.php
 
@@ -730,5 +845,57 @@ tail -f /var/www/html/traefik-manager/logs/*.log
 
 ---
 
-**Versão:** 2.1.0
-**Última atualização:** 28 de Outubro de 2025
+## Sistema de Templates (v2.2.0)
+
+### Benefícios
+
+✅ **Separação de Responsabilidades** - Lógica separada da estrutura YAML
+✅ **Manutenibilidade** - Editar templates sem alterar código PHP
+✅ **Extensibilidade** - Adicionar novos tipos facilmente
+✅ **Rastreabilidade** - Todos os YAMLs incluem comentário com template usado
+✅ **Testabilidade** - Templates podem ser testados isoladamente
+
+### Como Funciona
+
+1. **Template YAML** em `/templates/` com placeholders `{{NOME}}`
+2. **Engine** substitui placeholders com valores reais
+3. **Comentário** adicionado: `# Generated using template: nome-template.yml`
+4. **YAML pronto** salvo em `/var/www/traefik_configs/`
+
+### Exemplo de Template
+
+```yaml
+http:
+  routers:
+    {{NAME}}-http:
+      rule: {{RULE}}
+      service: {{NAME}}-service
+      entryPoints: [web]
+  services:
+    {{NAME}}-service:
+      loadBalancer:
+        servers:
+          - url: http://{{IP}}:{{PORT}}
+```
+
+### Middleware Ensure Slash
+
+Templates com path prefix incluem middleware para garantir barra final:
+
+```yaml
+{{NAME}}/ensure-{{PATH_PREFIX_SLUG}}-slash:
+  redirectRegex:
+    regex: '^(https?://[^/]+/{{PATH_PREFIX_REGEX}})$'
+    replacement: '${1}/'
+    permanent: true
+```
+
+**Ordem de execução:**
+1. `redirect-to-https` - Redireciona HTTP → HTTPS
+2. `ensure-{{PATH_PREFIX_SLUG}}-slash` - Garante barra final
+3. `rx-{{PATH_PREFIX_SLUG}}` - Reescreve path para backend
+
+---
+
+**Versão:** 2.2.0
+**Última atualização:** 29 de Outubro de 2025

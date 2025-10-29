@@ -1,0 +1,11 @@
+http:
+  routers:
+    {{NAME}}-http:
+      rule: {{RULE}}
+      service: {{NAME}}-service
+      entryPoints: [web]
+  services:
+    {{NAME}}-service:
+      loadBalancer:
+        servers:
+          - url: http://{{IP}}:{{PORT}}
