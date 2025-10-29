@@ -109,19 +109,17 @@ function generateSslTerminationYaml($name, $domain, $ip, $isWildcard = false, $e
             ]
         ];
 
-        // Se um caminho foi especificado, adiciona middleware de redirect
+        // Se um caminho foi especificado, adiciona middleware de addPrefix
         if (!empty($path)) {
-            $pathWithSlashes = '/' . trim($path, '/') . '/';
-            $yaml['http']['middlewares']['redirect-root-to-path'] = [
-                'redirectRegex' => [
-                    'regex' => '^(https?://[^/]+)/?$',
-                    'replacement' => '${1}' . $pathWithSlashes,
-                    'permanent' => false
+            $pathNormalized = '/' . trim($path, '/');
+            $yaml['http']['middlewares']["{$name}/add-prefix"] = [
+                'addPrefix' => [
+                    'prefix' => $pathNormalized
                 ]
             ];
 
             // Adiciona o middleware ao router HTTPS
-            $yaml['http']['routers']["{$name}-https"]['middlewares'] = ['redirect-root-to-path'];
+            $yaml['http']['routers']["{$name}-https"]['middlewares'] = ["{$name}/add-prefix"];
         }
     }
 
@@ -285,15 +283,24 @@ function extractDomainInfo($yamlContent) {
             $info['port'] = 80;
         }
 
-        // Extract Path from redirect-root-to-path middleware
-        if (isset($data['http']['middlewares']['redirect-root-to-path'])) {
-            $replacement = $data['http']['middlewares']['redirect-root-to-path']['redirectRegex']['replacement'] ?? '';
-            // Extract path from replacement: ${1}/path/
-            if (preg_match('/\$\{1\}\/(.+?)\/$/', $replacement, $matches)) {
-                $info['path'] = $matches[1];
+        // Extract Path from middleware (supports both addPrefix and old redirectRegex)
+        $info['path'] = '';
+        if (isset($data['http']['middlewares'])) {
+            foreach ($data['http']['middlewares'] as $middlewareName => $middleware) {
+                // New format: addPrefix
+                if (isset($middleware['addPrefix']['prefix'])) {
+                    $info['path'] = trim($middleware['addPrefix']['prefix'], '/');
+                    break;
+                }
+                // Old format: redirectRegex (backward compatibility)
+                if ($middlewareName === 'redirect-root-to-path' && isset($middleware['redirectRegex']['replacement'])) {
+                    $replacement = $middleware['redirectRegex']['replacement'];
+                    if (preg_match('/\$\{1\}\/(.+?)\/$/', $replacement, $matches)) {
+                        $info['path'] = $matches[1];
+                    }
+                    break;
+                }
             }
-        } else {
-            $info['path'] = '';
         }
     }
 

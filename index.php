@@ -3,7 +3,8 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/functions.php';
 
-requireLogin();
+// O React Router decide se mostra login ou dashboard
+// Não força autenticação aqui
 
 $assets = getReactAssets();
 $bootstrap = [
