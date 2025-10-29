@@ -37,5 +37,4 @@ Thumbs.db
 backup/
 .claude/
 
-node_modules
-dist
+frontend/node_modules

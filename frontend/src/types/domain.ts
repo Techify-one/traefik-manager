@@ -8,7 +8,6 @@ export interface DomainSummary {
   port: number;
   path: string;
   pathPrefix: string;
-  pathPrefixTarget: string;
   tags: string[];
   folder: string;
   size: number;

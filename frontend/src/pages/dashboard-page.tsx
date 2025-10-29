@@ -30,7 +30,6 @@ interface DomainFormState {
   type: 'ssl-termination' | 'passthrough';
   domain: string;
   pathPrefix: string;
-  pathPrefixTarget: string;
   ip: string;
   wildcard: boolean;
   enableHttps: boolean;
@@ -45,7 +44,6 @@ const defaultFormState: DomainFormState = {
   type: 'ssl-termination',
   domain: '',
   pathPrefix: '',
-  pathPrefixTarget: '',
   ip: '',
   wildcard: false,
   enableHttps: true,
@@ -71,6 +69,7 @@ export function DashboardPage() {
   const [domains, setDomains] = useState<DomainSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [formState, setFormState] = useState<DomainFormState>(defaultFormState);
+  const [domainInputValue, setDomainInputValue] = useState('');
   const [activeTab, setActiveTab] = useState<'simple' | 'advanced'>('simple');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -102,8 +101,7 @@ export function DashboardPage() {
       const response = await apiGet<DomainListResponse>('/api/domains.php?action=list');
       const normalizedDomains = response.data.domains.map((domain) => ({
         ...domain,
-        pathPrefix: domain.pathPrefix ?? '',
-        pathPrefixTarget: domain.pathPrefixTarget ?? ''
+        pathPrefix: domain.pathPrefix ?? ''
       }));
       setDomains(normalizedDomains);
     } catch (error) {
@@ -213,11 +211,10 @@ export function DashboardPage() {
 
   const resetForm = useCallback(() => {
     setFormState(defaultFormState);
+    setDomainInputValue('');
     setActiveTab('simple');
     setEditingFilename(null);
   }, []);
-
-  const domainDisplayValue = useMemo(() => formatDisplayDomain(formState.domain, formState.pathPrefix), [formState.domain, formState.pathPrefix]);
 
   const handleDomainInputChange = useCallback((rawValue: string) => {
     const trimmed = rawValue.trim();
@@ -226,28 +223,23 @@ export function DashboardPage() {
     const segments = normalized.split('/');
     const baseDomain = segments[0] ?? '';
     const remainingSegments = segments.slice(1).filter(Boolean);
-    const normalizedPrefix = remainingSegments.join('/').replace(/\/{2,}/g, '/');
-    const cleanedPrefix = normalizedPrefix.replace(/^\/+/, '').replace(/\/+$/, '');
+    const rawPrefix = remainingSegments.join('/').replace(/\/{2,}/g, '/');
+    const cleanedPrefix = normalizePathSegment(rawPrefix);
+    const sanitizedDomain = sanitizeDomain(baseDomain);
 
-    setFormState((prev) => {
-      const nextPrefix = cleanedPrefix;
-      let nextPrefixTarget = prev.pathPrefixTarget;
+    let displayValue = sanitizedDomain;
+    if (cleanedPrefix) {
+      displayValue = sanitizedDomain ? `${sanitizedDomain}/${cleanedPrefix}` : `/${cleanedPrefix}`;
+    } else if (!cleanedPrefix && trimmed.endsWith('/') && sanitizedDomain) {
+      displayValue = `${sanitizedDomain}/`;
+    }
+    setDomainInputValue(displayValue);
 
-      if (nextPrefix === '') {
-        nextPrefixTarget = '';
-      } else if (prev.pathPrefix !== nextPrefix) {
-        if (!prev.pathPrefixTarget || prev.pathPrefixTarget === prev.pathPrefix || prev.pathPrefixTarget === prev.path) {
-          nextPrefixTarget = prev.path ? prev.path : nextPrefix;
-        }
-      }
-
-      return {
-        ...prev,
-        domain: sanitizeDomain(baseDomain),
-        pathPrefix: nextPrefix,
-        pathPrefixTarget: nextPrefixTarget
-      };
-    });
+    setFormState((prev) => ({
+      ...prev,
+      domain: sanitizedDomain,
+      pathPrefix: cleanedPrefix
+    }));
   }, []);
 
   const openCreateDialog = () => {
@@ -265,13 +257,10 @@ export function DashboardPage() {
       // Find domain in list to get tags and folder
       const domainInfo = domains.find(d => d.filename === filename);
 
-      const prefixTarget = details.pathPrefixTarget ?? domainInfo?.pathPrefixTarget ?? (details.pathPrefix ?? '');
-
       setFormState({
         type: details.type,
         domain: details.domain,
         pathPrefix: details.pathPrefix ?? '',
-        pathPrefixTarget: prefixTarget,
         ip: details.ip,
         wildcard: details.isWildcard,
         enableHttps: details.enableHttps !== false,
@@ -281,6 +270,7 @@ export function DashboardPage() {
         port: details.port ?? 80,
         path: details.path ?? ''
       });
+      setDomainInputValue(formatDisplayDomain(details.domain, details.pathPrefix ?? ''));
       setActiveTab('simple');
       setEditingFilename(filename);
     } catch (error) {
@@ -317,19 +307,7 @@ export function DashboardPage() {
     const finalFilename = formState.folder ? `${formState.folder}/${newBaseFilename}` : newBaseFilename;
 
     const normalizedPath = normalizePathSegment(formState.path);
-    const normalizedPathPrefixTarget = (() => {
-      const candidate = normalizePathSegment(formState.pathPrefixTarget);
-      if (candidate) {
-        return candidate;
-      }
-      if (normalizedPath) {
-        return normalizedPath;
-      }
-      if (formState.pathPrefix) {
-        return formState.pathPrefix;
-      }
-      return '';
-    })();
+    const normalizedPathPrefixTarget = normalizedPath || normalizePathSegment(formState.pathPrefix);
 
     try {
       setSaving(true);
@@ -820,9 +798,9 @@ export function DashboardPage() {
                       <Label htmlFor="domain">Domínio</Label>
                       <Input
                         id="domain"
-                        value={domainDisplayValue}
+                        value={domainInputValue}
                         onChange={(event) => handleDomainInputChange(event.target.value)}
-                        placeholder="exemplo.seudominio.com"
+                        placeholder="dominio.com/app"
                       />
                       <p className="text-xs text-muted-foreground">
                         Você pode incluir um caminho, por exemplo <code>dominio.com/app</code>, para mapear apenas esse prefixo.
@@ -862,37 +840,12 @@ export function DashboardPage() {
                           value={formState.path}
                           onChange={(event) => {
                             const value = event.target.value;
-                            setFormState((prev) => {
-                              let nextTarget = prev.pathPrefixTarget;
-                              if (!nextTarget || nextTarget === prev.path) {
-                                nextTarget = value;
-                              }
-                              return {
-                                ...prev,
-                                path: value,
-                                pathPrefixTarget: nextTarget
-                              };
-                            });
+                            setFormState((prev) => ({ ...prev, path: value }));
                           }}
                           placeholder="traefik-manager"
                         />
                         <p className="text-xs text-muted-foreground">Redireciona / para /caminho/ ao remover o prefixo na resposta.</p>
                       </div>
-                    </div>
-                  )}
-
-                  {formState.type === 'ssl-termination' && formState.pathPrefix && (
-                    <div className="space-y-2">
-                      <Label htmlFor="pathPrefixTarget">Destino do prefixo (opcional)</Label>
-                      <Input
-                        id="pathPrefixTarget"
-                        value={formState.pathPrefixTarget}
-                        onChange={(event) => setFormState((prev) => ({ ...prev, pathPrefixTarget: event.target.value }))}
-                        placeholder={formState.path || formState.pathPrefix}
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Reescreve <code>/{formState.pathPrefix}</code> para <code>/{formState.pathPrefixTarget || ''}</code>, mantendo o prefixo oculto.
-                      </p>
                     </div>
                   )}
 
