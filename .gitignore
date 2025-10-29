@@ -38,3 +38,4 @@ backup/
 .claude/
 
 node_modules
+dist

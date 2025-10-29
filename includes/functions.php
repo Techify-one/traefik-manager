@@ -24,6 +24,36 @@ function sanitizeDomain($domain) {
 }
 
 /**
+ * Sanitize path prefix for routing (e.g., "api/v1")
+ * Returns cleaned prefix without leading/trailing slashes or false if invalid
+ */
+function sanitizePathPrefix($prefix) {
+    if (!is_string($prefix)) {
+        return false;
+    }
+
+    $prefix = trim($prefix);
+    if ($prefix === '') {
+        return '';
+    }
+
+    // Normalize slashes
+    $prefix = preg_replace('#/+#', '/', $prefix);
+    $prefix = trim($prefix, '/');
+
+    if ($prefix === '') {
+        return '';
+    }
+
+    // Allow alphanumeric, dash, underscore, dot and additional "/" for nested paths
+    if (!preg_match('/^[A-Za-z0-9._\-\/]+$/', $prefix)) {
+        return false;
+    }
+
+    return $prefix;
+}
+
+/**
  * Validate IP address or domain
  * Accepts both IP addresses (IPv4/IPv6) and domain names
  */

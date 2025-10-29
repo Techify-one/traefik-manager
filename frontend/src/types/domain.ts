@@ -7,6 +7,8 @@ export interface DomainSummary {
   enableHttps: boolean;
   port: number;
   path: string;
+  pathPrefix: string;
+  pathPrefixTarget: string;
   tags: string[];
   folder: string;
   size: number;
@@ -24,6 +26,8 @@ export interface DomainDetails {
     enableHttps?: boolean;
     port?: number;
     path?: string;
+    pathPrefix?: string;
+    pathPrefixTarget?: string;
   };
 }
 

@@ -29,6 +29,8 @@ import { fetchFolders, createFolder, moveFile } from '../lib/folders';
 interface DomainFormState {
   type: 'ssl-termination' | 'passthrough';
   domain: string;
+  pathPrefix: string;
+  pathPrefixTarget: string;
   ip: string;
   wildcard: boolean;
   enableHttps: boolean;
@@ -42,6 +44,8 @@ interface DomainFormState {
 const defaultFormState: DomainFormState = {
   type: 'ssl-termination',
   domain: '',
+  pathPrefix: '',
+  pathPrefixTarget: '',
   ip: '',
   wildcard: false,
   enableHttps: true,
@@ -51,6 +55,15 @@ const defaultFormState: DomainFormState = {
   port: 80,
   path: ''
 };
+
+const formatDisplayDomain = (domain: string, pathPrefix?: string) => {
+  if (!domain) {
+    return pathPrefix ? `/${pathPrefix}` : '';
+  }
+  return pathPrefix ? `${domain}/${pathPrefix}` : domain;
+};
+
+const normalizePathSegment = (value: string) => value.trim().replace(/^\/+/, '').replace(/\/+$/, '');
 
 export function DashboardPage() {
   const { info, logout } = useSession();
@@ -87,7 +100,12 @@ export function DashboardPage() {
     try {
       setLoading(true);
       const response = await apiGet<DomainListResponse>('/api/domains.php?action=list');
-      setDomains(response.data.domains);
+      const normalizedDomains = response.data.domains.map((domain) => ({
+        ...domain,
+        pathPrefix: domain.pathPrefix ?? '',
+        pathPrefixTarget: domain.pathPrefixTarget ?? ''
+      }));
+      setDomains(normalizedDomains);
     } catch (error) {
       console.error(error);
       toast({ title: 'Erro ao carregar domínios', description: error instanceof Error ? error.message : 'Tente novamente', variant: 'destructive' });
@@ -166,7 +184,7 @@ export function DashboardPage() {
     if (filters.search.trim()) {
       const term = filters.search.trim().toLowerCase();
       result = result.filter(d =>
-        d.domain.toLowerCase().includes(term) ||
+        formatDisplayDomain(d.domain, d.pathPrefix).toLowerCase().includes(term) ||
         d.ip.toLowerCase().includes(term) ||
         d.filename.toLowerCase().includes(term)
       );
@@ -199,6 +217,39 @@ export function DashboardPage() {
     setEditingFilename(null);
   }, []);
 
+  const domainDisplayValue = useMemo(() => formatDisplayDomain(formState.domain, formState.pathPrefix), [formState.domain, formState.pathPrefix]);
+
+  const handleDomainInputChange = useCallback((rawValue: string) => {
+    const trimmed = rawValue.trim();
+    const withoutProtocol = trimmed.replace(/^https?:\/\//i, '').replace(/^www\./i, '');
+    const normalized = withoutProtocol.replace(/\/{2,}/g, '/');
+    const segments = normalized.split('/');
+    const baseDomain = segments[0] ?? '';
+    const remainingSegments = segments.slice(1).filter(Boolean);
+    const normalizedPrefix = remainingSegments.join('/').replace(/\/{2,}/g, '/');
+    const cleanedPrefix = normalizedPrefix.replace(/^\/+/, '').replace(/\/+$/, '');
+
+    setFormState((prev) => {
+      const nextPrefix = cleanedPrefix;
+      let nextPrefixTarget = prev.pathPrefixTarget;
+
+      if (nextPrefix === '') {
+        nextPrefixTarget = '';
+      } else if (prev.pathPrefix !== nextPrefix) {
+        if (!prev.pathPrefixTarget || prev.pathPrefixTarget === prev.pathPrefix || prev.pathPrefixTarget === prev.path) {
+          nextPrefixTarget = prev.path ? prev.path : nextPrefix;
+        }
+      }
+
+      return {
+        ...prev,
+        domain: sanitizeDomain(baseDomain),
+        pathPrefix: nextPrefix,
+        pathPrefixTarget: nextPrefixTarget
+      };
+    });
+  }, []);
+
   const openCreateDialog = () => {
     resetForm();
     setDialogOpen(true);
@@ -214,9 +265,13 @@ export function DashboardPage() {
       // Find domain in list to get tags and folder
       const domainInfo = domains.find(d => d.filename === filename);
 
+      const prefixTarget = details.pathPrefixTarget ?? domainInfo?.pathPrefixTarget ?? (details.pathPrefix ?? '');
+
       setFormState({
         type: details.type,
         domain: details.domain,
+        pathPrefix: details.pathPrefix ?? '',
+        pathPrefixTarget: prefixTarget,
         ip: details.ip,
         wildcard: details.isWildcard,
         enableHttps: details.enableHttps !== false,
@@ -245,6 +300,11 @@ export function DashboardPage() {
       return;
     }
 
+    if (formState.type === 'passthrough' && formState.pathPrefix) {
+      toast({ title: 'Configuração inválida', description: 'Prefixos de caminho não são suportados em Passthrough.', variant: 'destructive' });
+      return;
+    }
+
     // Generate filename automatically from domain
     const filenameBase = generateFilename(formState.domain);
     if (!filenameBase) {
@@ -255,6 +315,21 @@ export function DashboardPage() {
     const newBaseFilename = ensureYamlExtension(filenameBase);
     // Build full path with folder for proper comparison
     const finalFilename = formState.folder ? `${formState.folder}/${newBaseFilename}` : newBaseFilename;
+
+    const normalizedPath = normalizePathSegment(formState.path);
+    const normalizedPathPrefixTarget = (() => {
+      const candidate = normalizePathSegment(formState.pathPrefixTarget);
+      if (candidate) {
+        return candidate;
+      }
+      if (normalizedPath) {
+        return normalizedPath;
+      }
+      if (formState.pathPrefix) {
+        return formState.pathPrefix;
+      }
+      return '';
+    })();
 
     try {
       setSaving(true);
@@ -269,7 +344,9 @@ export function DashboardPage() {
             enableHttps: formState.enableHttps,
             name: filenameBase,
             port: formState.port,
-            path: formState.path
+            path: normalizedPath,
+            pathPrefix: formState.pathPrefix,
+            pathPrefixTarget: normalizedPathPrefixTarget
           });
 
           // Compare with folder path included
@@ -286,7 +363,9 @@ export function DashboardPage() {
               folder: formState.folder,
               tags: formState.tags,
               port: formState.port,
-              path: formState.path
+              path: normalizedPath,
+              pathPrefix: formState.pathPrefix,
+              pathPrefixTarget: normalizedPathPrefixTarget
             });
 
             await apiPost('/api/domains.php', {
@@ -316,7 +395,9 @@ export function DashboardPage() {
             folder: formState.folder,
             tags: formState.tags,
             port: formState.port,
-            path: formState.path
+            path: normalizedPath,
+            pathPrefix: formState.pathPrefix,
+            pathPrefixTarget: normalizedPathPrefixTarget
           });
         }
       } else {
@@ -344,12 +425,14 @@ export function DashboardPage() {
             folder: formState.folder,
             tags: formState.tags,
             port: formState.port,
-            path: formState.path
+            path: normalizedPath,
+            pathPrefix: formState.pathPrefix,
+            pathPrefixTarget: normalizedPathPrefixTarget
           });
         }
       }
 
-      toast({ title: 'Domínio salvo', description: `As configurações para ${formState.domain} foram atualizadas.` });
+      toast({ title: 'Domínio salvo', description: `As configurações para ${formatDisplayDomain(formState.domain, formState.pathPrefix)} foram atualizadas.` });
       setDialogOpen(false);
       await loadDomains();
     } catch (error) {
@@ -361,7 +444,7 @@ export function DashboardPage() {
   };
 
   const openDeleteDialog = (domain: DomainSummary) => {
-    setDeleteTarget({ filename: domain.filename, domain: domain.domain });
+    setDeleteTarget({ filename: domain.filename, domain: formatDisplayDomain(domain.domain, domain.pathPrefix) });
     setDeleteOpen(true);
   };
 
@@ -469,7 +552,8 @@ export function DashboardPage() {
 
     try {
       await moveFile(moveTarget.filename, targetFolder);
-      toast({ title: 'Arquivo movido', description: `${moveTarget.domain} foi movido para ${targetFolder || 'raiz'}.` });
+      const displayDomain = formatDisplayDomain(moveTarget.domain, moveTarget.pathPrefix);
+      toast({ title: 'Arquivo movido', description: `${displayDomain} foi movido para ${targetFolder || 'raiz'}.` });
       setFolderDialogOpen(false);
       setMoveTarget(null);
       await loadDomains();
@@ -595,7 +679,7 @@ export function DashboardPage() {
                     filteredDomains.map((domain) => (
                       <FileListItem
                         key={domain.filename}
-                        domain={domain.domain}
+                        domain={formatDisplayDomain(domain.domain, domain.pathPrefix)}
                         type={domain.type}
                         ip={domain.ip}
                         tags={domain.tags}
@@ -628,55 +712,58 @@ export function DashboardPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredDomains.map((domain) => (
-                        <TableRow key={domain.filename} className="cursor-pointer" onClick={() => void openEditDialog(domain.filename)}>
-                          <TableCell className="font-medium">
-                            <div className="flex items-center gap-2">
-                              <span>{domain.domain}</span>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 w-6 p-0"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  void copyToClipboard(domain.domain, 'Domínio');
-                                }}
-                                title="Copiar domínio"
-                              >
-                                <Copy className="h-3.5 w-3.5" />
+                      {filteredDomains.map((domain) => {
+                        const displayDomain = formatDisplayDomain(domain.domain, domain.pathPrefix);
+                        return (
+                          <TableRow key={domain.filename} className="cursor-pointer" onClick={() => void openEditDialog(domain.filename)}>
+                            <TableCell className="font-medium">
+                              <div className="flex items-center gap-2">
+                                <span>{displayDomain}</span>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 w-6 p-0"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    void copyToClipboard(displayDomain, 'Domínio');
+                                  }}
+                                  title="Copiar domínio"
+                                >
+                                  <Copy className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={domain.type === 'ssl-termination' ? 'default' : 'secondary'}>
+                                {domain.type === 'ssl-termination' ? 'SSL Termination' : 'Passthrough'}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <code>{domain.ip}</code>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-wrap gap-1">
+                                {domain.tags.length > 0 ? (
+                                  domain.tags.map((tag) => (
+                                    <TagBadge key={tag} tag={tag} />
+                                  ))
+                                ) : (
+                                  <span className="text-sm text-muted-foreground">—</span>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell>{domain.isWildcard ? 'Sim' : 'Não'}</TableCell>
+                            <TableCell className="flex justify-end gap-2">
+                              <Button variant="secondary" size="sm" onClick={(event) => { event.stopPropagation(); openMoveDialog(domain); }}>
+                                <FolderOpen className="mr-1 h-4 w-4" /> Mover
                               </Button>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={domain.type === 'ssl-termination' ? 'default' : 'secondary'}>
-                              {domain.type === 'ssl-termination' ? 'SSL Termination' : 'Passthrough'}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <code>{domain.ip}</code>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex flex-wrap gap-1">
-                              {domain.tags.length > 0 ? (
-                                domain.tags.map((tag) => (
-                                  <TagBadge key={tag} tag={tag} />
-                                ))
-                              ) : (
-                                <span className="text-sm text-muted-foreground">—</span>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell>{domain.isWildcard ? 'Sim' : 'Não'}</TableCell>
-                          <TableCell className="flex justify-end gap-2">
-                            <Button variant="secondary" size="sm" onClick={(event) => { event.stopPropagation(); openMoveDialog(domain); }}>
-                              <FolderOpen className="mr-1 h-4 w-4" /> Mover
-                            </Button>
-                            <Button variant="destructive" size="sm" onClick={(event) => { event.stopPropagation(); openDeleteDialog(domain); }}>
-                              <Trash2 className="mr-1 h-4 w-4" /> Remover
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                              <Button variant="destructive" size="sm" onClick={(event) => { event.stopPropagation(); openDeleteDialog(domain); }}>
+                                <Trash2 className="mr-1 h-4 w-4" /> Remover
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 )
@@ -685,7 +772,6 @@ export function DashboardPage() {
           </Card>
         </div>
       </section>
-
       <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) { setDialogOpen(false); resetForm(); } }}>
         <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -734,10 +820,13 @@ export function DashboardPage() {
                       <Label htmlFor="domain">Domínio</Label>
                       <Input
                         id="domain"
-                        value={formState.domain}
-                        onChange={(event) => setFormState((prev) => ({ ...prev, domain: event.target.value }))}
+                        value={domainDisplayValue}
+                        onChange={(event) => handleDomainInputChange(event.target.value)}
                         placeholder="exemplo.seudominio.com"
                       />
+                      <p className="text-xs text-muted-foreground">
+                        Você pode incluir um caminho, por exemplo <code>dominio.com/app</code>, para mapear apenas esse prefixo.
+                      </p>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="ip">Backend IP ou Domínio</Label>
@@ -767,15 +856,43 @@ export function DashboardPage() {
                         <p className="text-xs text-muted-foreground">Porta do servidor web. Padrão: 80</p>
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="path">Caminho (opcional)</Label>
+                        <Label htmlFor="path">Caminho raiz (opcional)</Label>
                         <Input
                           id="path"
                           value={formState.path}
-                          onChange={(event) => setFormState((prev) => ({ ...prev, path: event.target.value }))}
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            setFormState((prev) => {
+                              let nextTarget = prev.pathPrefixTarget;
+                              if (!nextTarget || nextTarget === prev.path) {
+                                nextTarget = value;
+                              }
+                              return {
+                                ...prev,
+                                path: value,
+                                pathPrefixTarget: nextTarget
+                              };
+                            });
+                          }}
                           placeholder="traefik-manager"
                         />
-                        <p className="text-xs text-muted-foreground">Redireciona / para /caminho/</p>
+                        <p className="text-xs text-muted-foreground">Redireciona / para /caminho/ ao remover o prefixo na resposta.</p>
                       </div>
+                    </div>
+                  )}
+
+                  {formState.type === 'ssl-termination' && formState.pathPrefix && (
+                    <div className="space-y-2">
+                      <Label htmlFor="pathPrefixTarget">Destino do prefixo (opcional)</Label>
+                      <Input
+                        id="pathPrefixTarget"
+                        value={formState.pathPrefixTarget}
+                        onChange={(event) => setFormState((prev) => ({ ...prev, pathPrefixTarget: event.target.value }))}
+                        placeholder={formState.path || formState.pathPrefix}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Reescreve <code>/{formState.pathPrefix}</code> para <code>/{formState.pathPrefixTarget || ''}</code>, mantendo o prefixo oculto.
+                      </p>
                     </div>
                   )}
 
@@ -881,7 +998,7 @@ export function DashboardPage() {
         <FolderDialog
           open={folderDialogOpen}
           onOpenChange={setFolderDialogOpen}
-          filename={moveTarget.domain}
+          filename={formatDisplayDomain(moveTarget.domain, moveTarget.pathPrefix)}
           currentFolder={moveTarget.folder}
           folders={availableFolders}
           onMove={handleMoveFile}

@@ -150,7 +150,15 @@ function createDomain() {
     $folder = $data['folder'] ?? '';
     $tags = $data['tags'] ?? [];
     $port = $data['port'] ?? 80;  // Porta padrão 80
-    $path = $data['path'] ?? '';  // Caminho opcional
+    $path = trim($data['path'] ?? '');  // Caminho opcional (raiz)
+    $pathPrefixRaw = $data['pathPrefix'] ?? '';
+    $pathPrefix = sanitizePathPrefix($pathPrefixRaw);
+    if ($pathPrefix === false) {
+        jsonResponse(false, 'Invalid path prefix format. Use letters, numbers, dots, dashes, underscores and forward slashes.');
+    }
+    $pathPrefixTarget = trim($data['pathPrefixTarget'] ?? '');
+    $pathPrefixTarget = trim($pathPrefixTarget, '/');
+    $pathPrefixTarget = trim($pathPrefixTarget, '/');
 
     // Validate domain
     if (!validateDomain($domain)) {
@@ -183,8 +191,16 @@ function createDomain() {
     // Generate YAML content
     $name = str_replace(YAML_EXT, '', basename($filename));
 
+    if ($type === 'passthrough' && $pathPrefix !== '') {
+        jsonResponse(false, 'Path prefix is not supported for passthrough proxies');
+    }
+
+    if ($type === 'passthrough' && $pathPrefix !== '') {
+        jsonResponse(false, 'Path prefix is not supported for passthrough proxies');
+    }
+
     if ($type === 'ssl-termination') {
-        $yamlContent = generateSslTerminationYaml($name, $domain, $ip, $wildcard, $enableHttps, $port, $path);
+        $yamlContent = generateSslTerminationYaml($name, $domain, $ip, $wildcard, $enableHttps, $port, $path, $pathPrefix, $pathPrefixTarget);
     } elseif ($type === 'passthrough') {
         $yamlContent = generatePassthroughYaml($name, $domain, $ip, $wildcard, $enableHttps);
     } else {
@@ -345,7 +361,13 @@ function generateYamlContent() {
     $enableHttps = $data['enableHttps'] ?? true;
     $name = $data['name'] ?? str_replace('.', '-', $domain);
     $port = $data['port'] ?? 80;  // Porta padrão 80
-    $path = $data['path'] ?? '';  // Caminho opcional
+    $path = trim($data['path'] ?? '');  // Caminho opcional (raiz)
+    $pathPrefixRaw = $data['pathPrefix'] ?? '';
+    $pathPrefix = sanitizePathPrefix($pathPrefixRaw);
+    if ($pathPrefix === false) {
+        jsonResponse(false, 'Invalid path prefix format. Use letters, numbers, dots, dashes, underscores and forward slashes.');
+    }
+    $pathPrefixTarget = trim($data['pathPrefixTarget'] ?? '');
 
     // Validate domain
     if (!validateDomain($domain)) {
@@ -364,7 +386,7 @@ function generateYamlContent() {
 
     // Generate YAML content
     if ($type === 'ssl-termination') {
-        $yamlContent = generateSslTerminationYaml($name, $domain, $ip, $wildcard, $enableHttps, $port, $path);
+        $yamlContent = generateSslTerminationYaml($name, $domain, $ip, $wildcard, $enableHttps, $port, $path, $pathPrefix, $pathPrefixTarget);
     } elseif ($type === 'passthrough') {
         $yamlContent = generatePassthroughYaml($name, $domain, $ip, $wildcard, $enableHttps);
     } else {

@@ -6,6 +6,7 @@
 
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/metadata-handler.php';
+require_once __DIR__ . '/functions.php';
 
 /**
  * Parse YAML file
@@ -36,10 +37,12 @@ function validateYaml($content) {
     }
 }
 
+require_once __DIR__ . '/functions.php';
+
 /**
  * Generate SSL Termination YAML
  */
-function generateSslTerminationYaml($name, $domain, $ip, $isWildcard = false, $enableHttps = true, $port = 80, $path = '') {
+function generateSslTerminationYaml($name, $domain, $ip, $isWildcard = false, $enableHttps = true, $port = 80, $path = '', $pathPrefix = '', $pathPrefixTarget = '') {
     $rule = $isWildcard
         ? "HostRegexp(`^.*{$domain}$`)"
         : "Host(`{$domain}`)";
@@ -47,83 +50,158 @@ function generateSslTerminationYaml($name, $domain, $ip, $isWildcard = false, $e
     // Use porta customizada ou padrão 80
     $backendUrl = "http://{$ip}:{$port}";
 
-    if (!$enableHttps) {
-        // HTTP-only configuration
-        $yaml = [
-            'http' => [
-                'routers' => [
-                    "{$name}-http" => [
-                        'rule' => $rule,
-                        'service' => "{$name}-service",
-                        'entryPoints' => ['web']
-                    ]
-                ],
-                'services' => [
-                    "{$name}-service" => [
-                        'loadBalancer' => [
-                            'servers' => [
-                                ['url' => $backendUrl]
-                            ]
-                        ]
-                    ]
+    $normalizedRootTarget = trim($path);
+    $normalizedRootTarget = trim($normalizedRootTarget, '/');
+
+    $normalizedPrefix = sanitizePathPrefix($pathPrefix);
+    if ($normalizedPrefix === false) {
+        $normalizedPrefix = '';
+    }
+
+    $normalizedPrefixTarget = trim($pathPrefixTarget);
+    $normalizedPrefixTarget = trim($normalizedPrefixTarget, '/');
+
+    $buildReplacement = static function (string $targetPath): string {
+        $target = trim($targetPath, '/');
+        if ($target === '') {
+            return '/${1}';
+        }
+        return '/' . $target . '/${1}';
+    };
+
+    $baseMiddlewares = [];
+    $routers = [];
+    $services = [
+        "{$name}-service" => [
+            'loadBalancer' => [
+                'servers' => [
+                    ['url' => $backendUrl]
                 ]
             ]
+        ]
+    ];
+
+    $rootRouterName = "{$name}-http";
+    $includeRootRewrite = $normalizedRootTarget !== '' && $normalizedPrefix === '';
+
+    if (!$enableHttps) {
+        $routers[$rootRouterName] = [
+            'rule' => $rule,
+            'service' => "{$name}-service",
+            'entryPoints' => ['web']
         ];
     } else {
-        // HTTPS with SSL termination
-        $yaml = [
-            'http' => [
-                'routers' => [
-                    "{$name}-http" => [
-                        'rule' => $rule,
-                        'service' => "{$name}-service",
-                        'entryPoints' => ['web'],
-                        'middlewares' => ['redirect-to-https']
-                    ],
-                    "{$name}-https" => [
-                        'rule' => $rule,
-                        'service' => "{$name}-service",
-                        'entryPoints' => ['websecure'],
-                        'tls' => [
-                            'certResolver' => 'letsencrypt'
-                        ]
-                    ]
-                ],
-                'services' => [
-                    "{$name}-service" => [
-                        'loadBalancer' => [
-                            'servers' => [
-                                ['url' => $backendUrl]
-                            ]
-                        ]
-                    ]
-                ],
-                'middlewares' => [
-                    'redirect-to-https' => [
-                        'redirectScheme' => [
-                            'scheme' => 'https',
-                            'permanent' => true
-                        ]
-                    ]
-                ]
+        // HTTP router to redirect to HTTPS
+        $routers[$rootRouterName] = [
+            'rule' => $rule,
+            'service' => "{$name}-service",
+            'entryPoints' => ['web'],
+            'middlewares' => ['redirect-to-https']
+        ];
+
+        $baseMiddlewares['redirect-to-https'] = [
+            'redirectScheme' => [
+                'scheme' => 'https',
+                'permanent' => true
             ]
         ];
 
-        // Se um caminho foi especificado, adiciona middleware de addPrefix
-        if (!empty($path)) {
-            $pathNormalized = '/' . trim($path, '/');
-            $yaml['http']['middlewares']["{$name}/add-prefix"] = [
-                'addPrefix' => [
-                    'prefix' => $pathNormalized
+        if ($normalizedPrefix === '' || $includeRootRewrite) {
+            $httpsRouterName = "{$name}-https";
+            $routers[$httpsRouterName] = [
+                'rule' => $rule,
+                'service' => "{$name}-service",
+                'entryPoints' => ['websecure'],
+                'tls' => [
+                    'certResolver' => 'letsencrypt'
                 ]
             ];
-
-            // Adiciona o middleware ao router HTTPS
-            $yaml['http']['routers']["{$name}-https"]['middlewares'] = ["{$name}/add-prefix"];
+            $rootRouterName = $httpsRouterName;
         }
     }
 
-    return yaml_emit($yaml, YAML_UTF8_ENCODING);
+    $primaryEntryPoints = $enableHttps ? ['websecure'] : ['web'];
+
+    // Root path replacement middleware (keeps URLs clean)
+    if ($includeRootRewrite) {
+        $rootMiddlewareName = "{$name}/rx-root";
+        $baseMiddlewares[$rootMiddlewareName] = [
+            'replacePathRegex' => [
+                'regex' => '^(?:/(.*))?$',
+                'replacement' => $buildReplacement($normalizedRootTarget)
+            ]
+        ];
+
+        if (!isset($routers[$rootRouterName]['middlewares'])) {
+            $routers[$rootRouterName]['middlewares'] = [];
+        }
+        $routers[$rootRouterName]['middlewares'][] = $rootMiddlewareName;
+    }
+
+    // Path prefix handling (Host + PathPrefix)
+    if ($normalizedPrefix !== '') {
+        $slug = preg_replace('/[^A-Za-z0-9\-]+/', '-', $normalizedPrefix);
+        $slug = trim($slug, '-');
+        if ($slug === '') {
+            $slug = 'path';
+        }
+
+        $escapedPrefixForRule = str_replace('`', '\`', $normalizedPrefix);
+        $regexPrefix = '^/' . preg_quote($normalizedPrefix, '/') . '(?:/(.*))?$';
+        $replacement = $buildReplacement($normalizedPrefixTarget);
+        $pathMiddlewareName = "{$name}/rx-{$slug}";
+
+        $baseMiddlewares[$pathMiddlewareName] = [
+            'replacePathRegex' => [
+                'regex' => $regexPrefix,
+                'replacement' => $replacement
+            ]
+        ];
+
+        $prefixRouterName = ($enableHttps ? "{$name}-https-{$slug}" : "{$name}-http-{$slug}");
+        $routers[$prefixRouterName] = [
+            'rule' => $rule . " && PathPrefix(`/" . $escapedPrefixForRule . "`)",
+            'service' => "{$name}-service",
+            'entryPoints' => $primaryEntryPoints,
+            'middlewares' => [$pathMiddlewareName],
+            'priority' => 1000
+        ];
+
+        if ($enableHttps) {
+            $routers[$prefixRouterName]['tls'] = [
+                'certResolver' => 'letsencrypt'
+            ];
+        }
+    }
+
+    $yaml = [
+        'http' => [
+            'routers' => $routers,
+            'services' => $services
+        ]
+    ];
+
+    if (!empty($baseMiddlewares)) {
+        $yaml['http']['middlewares'] = $baseMiddlewares;
+    }
+
+    $yamlContent = yaml_emit($yaml, YAML_UTF8_ENCODING);
+
+    $quoteScalar = static function (string $yaml, string $key): string {
+        return preg_replace_callback(
+            '/^(\s*' . preg_quote($key, '/') . ':\s*)([^\'"\n][^\n]*)$/m',
+            static function ($matches) {
+                $value = rtrim($matches[2]);
+                return $matches[1] . "'" . $value . "'";
+            },
+            $yaml
+        );
+    };
+
+    $yamlContent = $quoteScalar($yamlContent, 'regex');
+    $yamlContent = $quoteScalar($yamlContent, 'replacement');
+
+    return $yamlContent;
 }
 
 /**
@@ -226,7 +304,9 @@ function extractDomainInfo($yamlContent) {
         'isWildcard' => false,
         'enableHttps' => true,
         'port' => 80,
-        'path' => ''
+        'path' => '',
+        'pathPrefix' => '',
+        'pathPrefixTarget' => ''
     ];
 
     // Check if it's passthrough (has TCP section)
@@ -254,9 +334,14 @@ function extractDomainInfo($yamlContent) {
         // Check if HTTPS is enabled by looking for websecure routers
         $hasHttpsRouter = false;
         foreach ($data['http']['routers'] as $routerName => $router) {
+            if (isset($router['rule']) && strpos($router['rule'], 'PathPrefix(') !== false && $info['pathPrefix'] === '') {
+                if (preg_match('/PathPrefix\(`\/([^`]+)`\)/', $router['rule'], $matches)) {
+                    $info['pathPrefix'] = trim($matches[1], '/');
+                }
+            }
+
             if (isset($router['entryPoints']) && in_array('websecure', $router['entryPoints'])) {
                 $hasHttpsRouter = true;
-                break;
             }
         }
         $info['enableHttps'] = $hasHttpsRouter;
@@ -283,24 +368,58 @@ function extractDomainInfo($yamlContent) {
             $info['port'] = 80;
         }
 
-        // Extract Path from middleware (supports both addPrefix and old redirectRegex)
-        $info['path'] = '';
+        $extractReplacementTarget = static function ($replacement) {
+            if (!is_string($replacement) || $replacement === '') {
+                return '';
+            }
+            $clean = str_replace('${1}', '', $replacement);
+            $clean = rtrim($clean, '/');
+            $clean = ltrim($clean, '/');
+            return $clean;
+        };
+
         if (isset($data['http']['middlewares'])) {
             foreach ($data['http']['middlewares'] as $middlewareName => $middleware) {
-                // New format: addPrefix
+                // Legacy format: addPrefix
                 if (isset($middleware['addPrefix']['prefix'])) {
                     $info['path'] = trim($middleware['addPrefix']['prefix'], '/');
-                    break;
+                    continue;
                 }
-                // Old format: redirectRegex (backward compatibility)
+
+                // Legacy format: redirectRegex
                 if ($middlewareName === 'redirect-root-to-path' && isset($middleware['redirectRegex']['replacement'])) {
                     $replacement = $middleware['redirectRegex']['replacement'];
                     if (preg_match('/\$\{1\}\/(.+?)\/$/', $replacement, $matches)) {
                         $info['path'] = $matches[1];
                     }
-                    break;
+                    continue;
+                }
+
+                // New format: replacePathRegex (root or prefix)
+                if (isset($middleware['replacePathRegex'])) {
+                    $regex = $middleware['replacePathRegex']['regex'] ?? '';
+                    $replacement = $middleware['replacePathRegex']['replacement'] ?? '';
+
+                    if ($regex === '^(?:/(.*))?$') {
+                        $info['path'] = $extractReplacementTarget($replacement);
+                        continue;
+                    }
+
+                    if (preg_match('/^\^\/([^\\(]+)(?:\(\?:|$)/', $regex, $matches)) {
+                        $prefixCandidate = trim($matches[1], '/');
+                        if ($prefixCandidate !== '') {
+                            if ($info['pathPrefix'] === '') {
+                                $info['pathPrefix'] = $prefixCandidate;
+                            }
+                            $info['pathPrefixTarget'] = $extractReplacementTarget($replacement);
+                        }
+                    }
                 }
             }
+        }
+
+        if ($info['path'] === '' && $info['pathPrefixTarget'] !== '') {
+            $info['path'] = $info['pathPrefixTarget'];
         }
     }
 
@@ -447,6 +566,8 @@ function listYamlFiles() {
                 'enableHttps' => $info['enableHttps'] ?? true,
                 'port' => $info['port'] ?? 80,
                 'path' => $info['path'] ?? '',
+                'pathPrefix' => $info['pathPrefix'] ?? '',
+                'pathPrefixTarget' => $info['pathPrefixTarget'] ?? '',
                 'tags' => $tags,
                 'folder' => $folder,
                 'size' => filesize($fullPath),
