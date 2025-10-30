@@ -1,6 +1,8 @@
 /**
  * Application configuration
- * BASE_PATH is now auto-detected at runtime (no config or rebuild needed!)
+ * BASE_PATH is intelligently detected to work in both scenarios:
+ * - Direct access: uses PHP config value
+ * - Behind proxy: auto-detects based on URL
  */
 
 declare global {
@@ -14,23 +16,32 @@ declare global {
 }
 
 /**
- * Auto-detect BASE_PATH based on current URL
- * - Direct access (http://10.8.200.253:64780/traefik-manager/) -> '/traefik-manager/'
- * - Behind proxy (https://proxy.teste.techify.run/) -> '/' (Traefik rewrites internally)
+ * Smart BASE_PATH detection
+ *
+ * Strategy:
+ * 1. If URL contains the configured base path -> use it (direct access)
+ * 2. Otherwise use '/' (behind proxy with path rewriting)
+ *
+ * Example:
+ * - Direct: http://10.8.200.253:64780/traefik-manager/ -> uses '/traefik-manager/' from PHP
+ * - Proxy:  https://proxy.teste.techify.run/ -> uses '/' (Traefik rewrites to /traefik-manager/ internally)
  */
 function detectBasePath(): string {
-  const path = window.location.pathname;
+  const configuredBasePath = window.__APP_CONFIG__?.basePath || '/';
+  const currentPath = window.location.pathname;
 
-  // Check if we're accessing through /traefik-manager/ path
-  if (path.startsWith('/traefik-manager/') || path === '/traefik-manager') {
-    return '/traefik-manager/';
+  // If the current URL contains the configured base path, we're accessing directly
+  if (configuredBasePath !== '/' &&
+      (currentPath.startsWith(configuredBasePath) ||
+       currentPath === configuredBasePath.replace(/\/$/, ''))) {
+    return configuredBasePath;
   }
 
-  // Otherwise assume root (behind proxy with path rewriting)
+  // Otherwise we're behind a proxy that rewrites the path
   return '/';
 }
 
-// Base path for the application (auto-detected)
+// Base path for the application (intelligently detected)
 export const BASE_PATH = detectBasePath();
 
 // API base URL (relative to BASE_PATH)
