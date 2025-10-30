@@ -8,6 +8,7 @@ Aplicação web full-stack para gerenciamento de configurações dinâmicas do T
 
 **Armazenamento:** File-based (YAML configs + JSON metadata), sem banco de dados.
 
+
 ---
 
 ## Estrutura de Diretórios
