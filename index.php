@@ -10,6 +10,7 @@ $assets = getReactAssets();
 $bootstrap = [
     'appName' => APP_NAME,
     'version' => APP_VERSION,
+    'basePath' => BASE_PATH,
 ];
 ?>
 <!DOCTYPE html>

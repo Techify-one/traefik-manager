@@ -1,9 +1,8 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// If you change the installation path, update this base path and also:
-// - frontend/src/config.ts (BASE_PATH)
-// Then rebuild with: ./build-frontend.sh
+// Base path for Vite build (assets paths)
+// Keep this as '/' - actual BASE_PATH is now dynamically injected by PHP at runtime
 const BASE_PATH = '/';
 
 export default defineConfig({
