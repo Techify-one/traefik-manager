@@ -96,8 +96,8 @@ Aplicação web full-stack para gerenciamento de configurações dinâmicas do T
 APP_NAME = 'Traefik Manager'
 APP_VERSION = '1.0.0'
 ADMIN_USER = 'admin'
-ADMIN_PASS = 'Redes147#@'
-API_BEARER_TOKEN = 'traefik_5f4dcc3b5aa765d61d8327deb882cf99_manager_2025'
+ADMIN_PASS = 'change-this-password'
+API_BEARER_TOKEN = 'your-secure-bearer-token-here'
 TRAEFIK_CONFIGS_PATH = '/var/www/traefik_configs'
 LOGS_PATH = '/var/www/html/traefik-manager/logs'
 YAML_EXT = '.yml'
@@ -172,11 +172,11 @@ http:
     apache1-http:
       loadBalancer:
         servers:
-          - url: "http://10.8.100.101:80"
+          - url: "http://192.0.2.10:80"
     apache1-https:
       loadBalancer:
         servers:
-          - url: "http://10.8.100.101:80"
+          - url: "http://192.0.2.10:80"
 ```
 
 ### YAML: SSL Termination (Porta + Path Customizado)
@@ -199,7 +199,7 @@ http:
     proxy-service:
       loadBalancer:
         servers:
-          - url: http://10.50.50.50:64780  # Porta customizada
+          - url: http://198.51.100.50:64780  # Porta customizada
   middlewares:
     redirect-to-https:
       redirectScheme:
@@ -236,7 +236,7 @@ http:
     apache10-service:
       loadBalancer:
         servers:
-          - url: http://10.8.200.253:64780
+          - url: http://198.51.100.253:64780
   middlewares:
     redirect-to-https:
       redirectScheme:
@@ -268,7 +268,7 @@ tcp:
     apache1-tcp:
       loadBalancer:
         servers:
-          - address: "10.8.100.101:443"
+          - address: "192.0.2.10:443"
 ```
 
 ---
@@ -303,7 +303,7 @@ POST /api/domains.php
   "folder": "redes",              // Opcional
   "type": "ssl-termination",
   "domain": "apache1.teste.techify.run",
-  "ip": "10.8.100.101",
+  "ip": "192.0.2.10",
   "wildcard": false,
   "enableHttps": true,
   "port": 80,                     // Opcional, padrão 80 (apenas ssl-termination)
@@ -344,7 +344,7 @@ POST /api/domains.php
   "action": "generate",
   "type": "ssl-termination",
   "domain": "exemplo.teste.techify.run",
-  "ip": "10.8.100.100",
+  "ip": "192.0.2.100",
   "wildcard": false,
   "enableHttps": true,
   "name": "exemplo",           // Opcional, padrão: domínio sem pontos
