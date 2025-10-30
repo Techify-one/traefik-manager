@@ -618,23 +618,12 @@ export function DashboardPage() {
       <header className="app-header flex flex-col justify-between gap-4 px-6 py-6 shadow-lg sm:flex-row sm:items-center">
         <div>
           <h1 className="text-3xl font-semibold">{info?.appName ?? 'Traefik Manager'}</h1>
-          <p className="text-sm opacity-90">Olá, {info?.username ?? 'usuário'}! Gerencie seus domínios Traefik.</p>
         </div>
         {headerActions}
       </header>
       <div className="flex flex-col gap-6 px-6 py-8">
 
       <section className="flex flex-col gap-4">
-        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-          <div>
-            <h2 className="text-2xl font-semibold">Domínios</h2>
-            <p className="text-sm text-muted-foreground">Crie, edite e remova configurações dinâmicas.</p>
-          </div>
-          <Button className="btn-warning" onClick={openCreateDialog}>
-            <Plus className="mr-2 h-4 w-4" /> Novo domínio
-          </Button>
-        </div>
-
         {/* Breadcrumb navigation for folder view */}
         {viewMode === 'folders' && (
           <BreadcrumbNavigation currentFolder={currentFolder} onNavigate={setCurrentFolder} />
@@ -651,11 +640,14 @@ export function DashboardPage() {
         <div className="flex flex-col gap-4">
 
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Domínios encontrados</p>
                 <p className="text-2xl font-bold">{domains.length}</p>
               </div>
+              <Button className="btn-dark-blue" onClick={openCreateDialog}>
+                <Plus className="mr-2 h-4 w-4" /> Novo domínio
+              </Button>
             </CardHeader>
             <CardContent>
               {loading ? (

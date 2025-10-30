@@ -78,6 +78,15 @@ code {
   background: hsl(217 91% 55%);
 }
 
+.btn-dark-blue {
+  background: hsl(220 60% 16%);
+  color: white;
+}
+
+.btn-dark-blue:hover {
+  background: hsl(220 60% 20%);
+}
+
 .btn-power-on {
   background: hsl(142 76% 36%);
   color: white;
