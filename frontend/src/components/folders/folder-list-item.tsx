@@ -59,7 +59,10 @@ export function FileListItem({ domain, type, ip, tags, isWildcard, enabled, onEd
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <p className="font-medium truncate">{domain}</p>
-            <Badge variant={enabled ? 'default' : 'secondary'} className="text-xs">
+            <Badge
+              variant={enabled ? 'default' : 'destructive'}
+              className={`text-xs ${enabled ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}
+            >
               {enabled ? 'Ativo' : 'Inativo'}
             </Badge>
             <Button
@@ -98,7 +101,7 @@ export function FileListItem({ domain, type, ip, tags, isWildcard, enabled, onEd
       </div>
       <div className="flex gap-2 ml-4 flex-shrink-0">
         <Button
-          variant={enabled ? 'outline' : 'default'}
+          className={enabled ? 'btn-power-off' : 'btn-power-on'}
           size="sm"
           onClick={(event) => {
             event.stopPropagation();
@@ -108,7 +111,7 @@ export function FileListItem({ domain, type, ip, tags, isWildcard, enabled, onEd
         >
           <Power className="mr-1 h-4 w-4" /> {enabled ? 'Desativar' : 'Ativar'}
         </Button>
-        <Button variant="secondary" size="sm" onClick={(event) => { event.stopPropagation(); onMove(); }}>
+        <Button className="btn-info" size="sm" onClick={(event) => { event.stopPropagation(); onMove(); }}>
           <FolderOpen className="mr-1 h-4 w-4" /> Mover
         </Button>
         <Button variant="destructive" size="sm" onClick={(event) => { event.stopPropagation(); onDelete(); }}>

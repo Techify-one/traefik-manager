@@ -585,7 +585,7 @@ export function DashboardPage() {
 
   const headerActions = (
     <div className="flex flex-wrap items-center gap-2">
-      <Button variant="secondary" onClick={() => void loadDomains()} title="Atualizar">
+      <Button className="btn-info" onClick={() => void loadDomains()} title="Atualizar">
         <RefreshCw className="mr-2 h-4 w-4" /> Atualizar
       </Button>
       <Button variant="secondary" onClick={() => setTagsDialogOpen(true)} title="Gerenciar tags">
@@ -614,14 +614,15 @@ export function DashboardPage() {
   );
 
   return (
-    <div className="mx-auto flex min-h-screen w-full flex-col gap-6 px-6 py-8">
-      <header className="flex flex-col justify-between gap-4 border-b border-border pb-6 sm:flex-row sm:items-center">
+    <div className="mx-auto flex min-h-screen w-full flex-col">
+      <header className="app-header flex flex-col justify-between gap-4 px-6 py-6 shadow-lg sm:flex-row sm:items-center">
         <div>
           <h1 className="text-3xl font-semibold">{info?.appName ?? 'Traefik Manager'}</h1>
-          <p className="text-sm text-muted-foreground">Olá, {info?.username ?? 'usuário'}! Gerencie seus domínios Traefik.</p>
+          <p className="text-sm opacity-90">Olá, {info?.username ?? 'usuário'}! Gerencie seus domínios Traefik.</p>
         </div>
         {headerActions}
       </header>
+      <div className="flex flex-col gap-6 px-6 py-8">
 
       <section className="flex flex-col gap-4">
         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
@@ -629,7 +630,7 @@ export function DashboardPage() {
             <h2 className="text-2xl font-semibold">Domínios</h2>
             <p className="text-sm text-muted-foreground">Crie, edite e remova configurações dinâmicas.</p>
           </div>
-          <Button onClick={openCreateDialog}>
+          <Button className="btn-warning" onClick={openCreateDialog}>
             <Plus className="mr-2 h-4 w-4" /> Novo domínio
           </Button>
         </div>
@@ -744,7 +745,10 @@ export function DashboardPage() {
                             onClick={() => void openEditDialog(domain.filename)}
                           >
                             <TableCell>
-                              <Badge variant={domain.enabled ? 'default' : 'secondary'}>
+                              <Badge
+                                variant={domain.enabled ? 'default' : 'destructive'}
+                                className={domain.enabled ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}
+                              >
                                 {domain.enabled ? 'Ativo' : 'Inativo'}
                               </Badge>
                             </TableCell>
@@ -787,14 +791,14 @@ export function DashboardPage() {
                             <TableCell>{domain.isWildcard ? 'Sim' : 'Não'}</TableCell>
                             <TableCell className="flex justify-end gap-2">
                               <Button
-                                variant={domain.enabled ? 'outline' : 'default'}
+                                className={domain.enabled ? 'btn-power-off' : 'btn-power-on'}
                                 size="sm"
                                 onClick={(event) => void handleToggleStatus(domain, event)}
                                 title={domain.enabled ? 'Desativar domínio' : 'Ativar domínio'}
                               >
                                 <Power className="mr-1 h-4 w-4" /> {domain.enabled ? 'Desativar' : 'Ativar'}
                               </Button>
-                              <Button variant="secondary" size="sm" onClick={(event) => { event.stopPropagation(); openMoveDialog(domain); }}>
+                              <Button className="btn-info" size="sm" onClick={(event) => { event.stopPropagation(); openMoveDialog(domain); }}>
                                 <FolderOpen className="mr-1 h-4 w-4" /> Mover
                               </Button>
                               <Button variant="destructive" size="sm" onClick={(event) => { event.stopPropagation(); openDeleteDialog(domain); }}>
@@ -1020,6 +1024,7 @@ export function DashboardPage() {
           onCreateFolder={handleCreateFolder}
         />
       )}
+      </div>
     </div>
   );
 }
