@@ -13,7 +13,7 @@ http:
       tls:
         certResolver: letsencrypt
     {{NAME}}-https-{{PATH_PREFIX_SLUG}}:
-      rule: {{RULE}} && PathPrefix(`/{{PATH_PREFIX}}`)
+      rule: {{RULE}} && PathPrefix("/{{PATH_PREFIX}}")
       service: {{NAME}}-service
       entryPoints: [websecure]
       middlewares:

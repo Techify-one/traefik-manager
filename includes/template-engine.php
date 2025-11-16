@@ -85,9 +85,9 @@ function templateExists($templateName) {
  */
 function createTraefikRule($domain, $isWildcard = false) {
     if ($isWildcard) {
-        return "HostRegexp(`^.*{$domain}$`)";
+        return "HostRegexp(\"^.*{$domain}$\")";
     }
-    return "Host(`{$domain}`)";
+    return "Host(\"{$domain}\")";
 }
 
 /**
@@ -99,9 +99,9 @@ function createTraefikRule($domain, $isWildcard = false) {
  */
 function createTraefikTcpRule($domain, $isWildcard = false) {
     if ($isWildcard) {
-        return "HostSNIRegexp(`^.*{$domain}$`)";
+        return "HostSNIRegexp(\"^.*{$domain}$\")";
     }
-    return "HostSNI(`{$domain}`)";
+    return "HostSNI(\"{$domain}\")";
 }
 
 /**
