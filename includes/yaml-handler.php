@@ -174,7 +174,7 @@ function extractDomainInfo($yamlContent) {
         $rule = $firstRouter['rule'] ?? '';
 
         // Extract domain from rule
-        if (preg_match('/HostSNI(?:Regexp)?\(`([^`]+)`\)/', $rule, $matches)) {
+        if (preg_match('/HostSNI(?:Regexp)?\("([^"]+)"\)/', $rule, $matches)) {
             $domain = $matches[1];
             $info['isWildcard'] = strpos($rule, 'HostSNIRegexp') !== false;
             $info['domain'] = str_replace(['^', '.*', '$'], '', $domain);
@@ -192,7 +192,7 @@ function extractDomainInfo($yamlContent) {
         $hasHttpsRouter = false;
         foreach ($data['http']['routers'] as $routerName => $router) {
             if (isset($router['rule']) && strpos($router['rule'], 'PathPrefix(') !== false && $info['pathPrefix'] === '') {
-                if (preg_match('/PathPrefix\(`\/([^`]+)`\)/', $router['rule'], $matches)) {
+                if (preg_match('/PathPrefix\("\/([^"]+)"\)/', $router['rule'], $matches)) {
                     $info['pathPrefix'] = trim($matches[1], '/');
                 }
             }
@@ -207,7 +207,7 @@ function extractDomainInfo($yamlContent) {
         $rule = $firstRouter['rule'] ?? '';
 
         // Extract domain from rule
-        if (preg_match('/Host(?:Regexp)?\(`([^`]+)`\)/', $rule, $matches)) {
+        if (preg_match('/Host(?:Regexp)?\("([^"]+)"\)/', $rule, $matches)) {
             $domain = $matches[1];
             $info['isWildcard'] = strpos($rule, 'HostRegexp') !== false;
             $info['domain'] = str_replace(['^', '.*', '$'], '', $domain);
