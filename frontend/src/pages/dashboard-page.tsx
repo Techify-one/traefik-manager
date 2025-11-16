@@ -36,7 +36,7 @@ interface DomainFormState {
   yaml: string;
   folder: string;
   tags: string[];
-  port: number;
+  port: number | string;
   path: string;
 }
 
@@ -309,6 +309,8 @@ export function DashboardPage() {
     const normalizedPath = normalizePathSegment(formState.path);
     // pathPrefixTarget pode ser vazio para ir para raiz (/) do backend
     const normalizedPathPrefixTarget = normalizePathSegment(formState.path);
+    // Porta padrão 80 se vazia
+    const normalizedPort = formState.port === '' ? 80 : Number(formState.port);
 
     try {
       setSaving(true);
@@ -322,7 +324,7 @@ export function DashboardPage() {
             wildcard: formState.wildcard,
             enableHttps: formState.enableHttps,
             name: filenameBase,
-            port: formState.port,
+            port: normalizedPort,
             path: normalizedPath,
             pathPrefix: formState.pathPrefix,
             pathPrefixTarget: normalizedPathPrefixTarget
@@ -373,7 +375,7 @@ export function DashboardPage() {
             enableHttps: formState.enableHttps,
             folder: formState.folder,
             tags: formState.tags,
-            port: formState.port,
+            port: normalizedPort,
             path: normalizedPath,
             pathPrefix: formState.pathPrefix,
             pathPrefixTarget: normalizedPathPrefixTarget
@@ -403,7 +405,7 @@ export function DashboardPage() {
             enableHttps: formState.enableHttps,
             folder: formState.folder,
             tags: formState.tags,
-            port: formState.port,
+            port: normalizedPort,
             path: normalizedPath,
             pathPrefix: formState.pathPrefix,
             pathPrefixTarget: normalizedPathPrefixTarget
@@ -886,7 +888,7 @@ export function DashboardPage() {
                           min="1"
                           max="65535"
                           value={formState.port}
-                          onChange={(event) => setFormState((prev) => ({ ...prev, port: parseInt(event.target.value) || 80 }))}
+                          onChange={(event) => setFormState((prev) => ({ ...prev, port: event.target.value === '' ? '' : parseInt(event.target.value) || '' }))}
                           placeholder="80"
                         />
                         <p className="text-xs text-muted-foreground">Porta do servidor web. Padrão: 80</p>
