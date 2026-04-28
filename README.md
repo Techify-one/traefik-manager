@@ -135,3 +135,7 @@ Propriedade da Techify - Uso interno
 ## Suporte
 
 Para suporte e questões, entre em contato com a equipe de desenvolvimento da Techify.
+
+---
+
+Mantido por [Techify](https://github.com/Techify-one) — leia mais em [techify.one/blog](https://techify.one/blog).
