@@ -2,6 +2,8 @@
 
 Sistema web para gerenciamento de configurações do Traefik via interface gráfica e API REST.
 
+**Tutorial completo no blog da Techify:** [Traefik Manager: economize IPs públicos e gerencie SSL Termination e Passthrough com interface gráfica](https://techify.one/blog/traefik-manager-economize-ips-publicos-e-gerencie-ssl-termination-e-passthrough)
+
 ## Características
 
 - Interface web intuitiva para gerenciamento de domínios
